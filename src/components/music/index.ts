@@ -1,0 +1,1 @@
+export { MusicGenerator } from './MusicGenerator'

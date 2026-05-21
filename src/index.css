@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply border-warm-200 dark:border-gray-700;
+  }
+  
+  body {
+    @apply bg-warm-50 text-warm-900 dark:bg-gray-900 dark:text-gray-100;
+  }
+}
+
+@layer utilities {
+  .scrollbar-warm::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .scrollbar-warm::-webkit-scrollbar-track {
+    @apply bg-warm-100 dark:bg-gray-800 rounded-full;
+  }
+  
+  .scrollbar-warm::-webkit-scrollbar-thumb {
+    @apply bg-warm-300 dark:bg-gray-600 rounded-full;
+  }
+  
+  .scrollbar-warm::-webkit-scrollbar-thumb:hover {
+    @apply bg-warm-400 dark:bg-gray-500;
+  }
+}

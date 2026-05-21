@@ -1,0 +1,1 @@
+export { CoverProcessor } from './CoverProcessor'
