@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { generateLyrics, LyricsGenerationResponse } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
 
-export type LyricsMode = 'text_to_lyrics' | 'audio_to_lyrics';
+export type LyricsMode = 'write_full_song' | 'edit';
 
 export interface UseLyricsGenerationReturn {
   generate: (
@@ -21,6 +21,8 @@ export function useLyricsGeneration(): UseLyricsGenerationReturn {
   
   const apiKey = useAppStore((state) => state.apiKey);
   const setGeneratedLyrics = useAppStore((state) => state.setGeneratedLyrics);
+  const setGeneratedLyricsTitle = useAppStore((state) => state.setGeneratedLyricsTitle);
+  const setGeneratedLyricsStyleTags = useAppStore((state) => state.setGeneratedLyricsStyleTags);
   const setLyricsPanelOpen = useAppStore((state) => state.setLyricsPanelOpen);
 
   const generate = useCallback(async (
@@ -41,18 +43,16 @@ export function useLyricsGeneration(): UseLyricsGenerationReturn {
         title
       );
       
-      if (response.status !== 0 && response.status !== 200) {
-        throw new Error(response.status_text || 'Lyrics generation failed');
+      if (response.base_resp && response.base_resp.status_code !== 0) {
+        throw new Error(response.base_resp.status_msg || 'Lyrics generation failed');
       }
-      
-      if (!response.data) {
-        throw new Error('No data in response');
-      }
-      
-      const generatedLyricsText = response.data.lyrics || null;
-      
+
+      const generatedLyricsText = response.lyrics || null;
+
       if (generatedLyricsText) {
         setGeneratedLyrics(generatedLyricsText);
+        setGeneratedLyricsTitle(response.song_title || null);
+        setGeneratedLyricsStyleTags(response.style_tags || null);
         setLyricsPanelOpen(true);
       }
       
@@ -64,7 +64,7 @@ export function useLyricsGeneration(): UseLyricsGenerationReturn {
     } finally {
       setIsLoading(false);
     }
-  }, [apiKey, setGeneratedLyrics, setLyricsPanelOpen]);
+  }, [apiKey, setGeneratedLyrics, setGeneratedLyricsTitle, setGeneratedLyricsStyleTags, setLyricsPanelOpen]);
 
   return {
     generate,

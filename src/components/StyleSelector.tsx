@@ -1,5 +1,4 @@
 import { Palette, Check } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -7,13 +6,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
-import { cn } from '@/lib/utils'
 
 export type Style = 'warm' | 'nature' | 'cyberpunk'
 
 interface StyleSelectorProps {
   value: Style
   onChange: (style: Style) => void
+  isDark?: boolean
+  borderColor?: string
+  labelColor?: string
 }
 
 const styles = [
@@ -37,13 +38,27 @@ const styles = [
   },
 ]
 
-export function StyleSelector({ value, onChange }: StyleSelectorProps) {
+export function StyleSelector({ value, onChange, isDark = false, borderColor = '#e5e5e5', labelColor = '#666' }: StyleSelectorProps) {
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
-          <Palette className="h-5 w-5" />
-        </Button>
+        <button
+          style={{
+            width: '38px',
+            height: '38px',
+            borderRadius: '10px',
+            border: `2px solid ${borderColor}`,
+            backgroundColor: isDark ? 'rgba(60,60,60,0.8)' : 'rgba(255,255,255,0.9)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'all 0.2s',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+          }}
+        >
+          <Palette className="h-5 w-5" style={{ color: labelColor }} />
+        </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
@@ -54,33 +69,39 @@ export function StyleSelector({ value, onChange }: StyleSelectorProps) {
             <button
               key={style.id}
               onClick={() => onChange(style.id)}
-              className={cn(
-                "flex items-center gap-4 p-4 rounded-xl border-2 transition-all text-left",
-                value === style.id
-                  ? "border-warm-500 bg-warm-50"
-                  : "border-warm-200 hover:border-warm-300 hover:bg-warm-50"
-              )}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
+                padding: '16px',
+                borderRadius: '14px',
+                border: `2px solid ${value === style.id ? style.colors[3] : '#e5e5e5'}`,
+                backgroundColor: value === style.id ? `${style.colors[3]}15` : 'transparent',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                textAlign: 'left',
+                boxShadow: value === style.id ? `0 4px 12px ${style.colors[3]}30` : 'none',
+              }}
             >
               {/* Color Preview */}
-              <div className="flex rounded-lg overflow-hidden">
+              <div style={{ display: 'flex', borderRadius: '8px', overflow: 'hidden' }}>
                 {style.colors.map((color, i) => (
                   <div
                     key={i}
-                    className="w-8 h-10"
-                    style={{ backgroundColor: color }}
+                    style={{ width: '32px', height: '40px', backgroundColor: color }}
                   />
                 ))}
               </div>
 
               {/* Text */}
-              <div className="flex-1">
-                <div className="font-medium text-warm-900">{style.name}</div>
-                <div className="text-sm text-warm-600">{style.description}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, color: isDark ? '#eee' : '#333' }}>{style.name}</div>
+                <div style={{ fontSize: '13px', color: isDark ? '#888' : '#666', marginTop: '2px' }}>{style.description}</div>
               </div>
 
               {/* Selected Indicator */}
               {value === style.id && (
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-warm-500 text-white">
+                <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: style.colors[3], display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
                   <Check className="h-4 w-4" />
                 </div>
               )}

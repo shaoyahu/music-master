@@ -1,7 +1,9 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { Upload, Link as LinkIcon, Music, Loader2 } from 'lucide-react'
 import { useCoverPreprocess } from '@/hooks/useCoverPreprocess'
+import { useCoverGeneration } from '@/hooks/useCoverGeneration'
 import { useAppStore, styleColors } from '@/stores/appStore'
+import { CoverResultCard } from './CoverResultCard'
 
 export function CoverProcessor() {
   const {
@@ -9,17 +11,25 @@ export function CoverProcessor() {
     coverFeatureId,
     isDark,
     style,
+    coverPrompt,
   } = useAppStore()
 
   const colors = styleColors[style]
   const cardBg = isDark ? colors.cardBgDark : colors.cardBg
 
   const { preprocess, isLoading: isProcessingCoverLoading, error: coverError } = useCoverPreprocess()
+  const { generateCover, isLoading: isGeneratingCover, error: generateError } = useCoverGeneration()
 
-  const [localCoverPrompt, setLocalCoverPrompt] = useState('')
   const [localCoverUrl, setLocalCoverUrl] = useState('')
   const [localCoverLyrics, setLocalCoverLyrics] = useState(coverLyrics || '')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Sync local lyrics when store coverLyrics updates (after preprocess)
+  useEffect(() => {
+    if (coverLyrics) {
+      setLocalCoverLyrics(coverLyrics)
+    }
+  }, [coverLyrics])
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,9 +117,9 @@ export function CoverProcessor() {
             style={{
               width: '100%',
               height: '100px',
-              borderRadius: '12px',
-              border: `2px dashed ${borderColor}`,
-              backgroundColor: inputBg,
+              borderRadius: '14px',
+              border: `2px dashed ${colors.accent}`,
+              backgroundColor: isDark ? 'rgba(60,60,60,0.4)' : `${colors.accent}08`,
               cursor: isProcessing ? 'not-allowed' : 'pointer',
               display: 'flex',
               flexDirection: 'column',
@@ -117,7 +127,7 @@ export function CoverProcessor() {
               justifyContent: 'center',
               gap: '8px',
               transition: 'all 0.2s',
-              opacity: isProcessing ? 0.5 : 1
+              opacity: isProcessing ? 0.5 : 1,
             }}
           >
             <Upload className="h-8 w-8" style={{ color: accentColor }} />
@@ -169,12 +179,13 @@ export function CoverProcessor() {
               width: '100%',
               padding: '12px',
               borderRadius: '12px',
-              border: `2px solid ${borderColor}`,
-              backgroundColor: 'transparent',
-              color: labelColor,
+              border: 'none',
+              backgroundColor: isProcessing ? (isDark ? '#555' : colors.accent) : colors.accent,
+              color: '#fff',
               fontSize: '14px',
-              fontWeight: 500,
-              cursor: isProcessing ? 'not-allowed' : 'pointer'
+              fontWeight: 600,
+              cursor: isProcessing ? 'not-allowed' : 'pointer',
+              boxShadow: isProcessing ? 'none' : `0 4px 12px ${colors.accent}40`,
             }}
           >
             {isProcessing ? (
@@ -194,8 +205,8 @@ export function CoverProcessor() {
           <input
             type="text"
             placeholder="描述你想要的翻唱风格，例如：温暖抒情的版本..."
-            value={localCoverPrompt}
-            onChange={(e) => setLocalCoverPrompt(e.target.value)}
+            value={coverPrompt}
+            onChange={(e) => useAppStore.getState().setCoverPrompt(e.target.value)}
             disabled={isProcessing}
             style={{
               width: '100%',
@@ -289,22 +300,49 @@ export function CoverProcessor() {
         {/* Generate Button */}
         {coverFeatureId && (
           <button
+            onClick={() => generateCover()}
+            disabled={isGeneratingCover}
             style={{
               width: '100%',
               height: '56px',
               borderRadius: '14px',
-              backgroundColor: 'linear-gradient(135deg, #f97316, #ea580c)',
+              backgroundColor: isGeneratingCover ? (isDark ? '#555' : colors.accent) : colors.accent,
               color: '#fff',
               border: 'none',
               fontSize: '16px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              boxShadow: '0 4px 12px rgba(234,88,12,0.3)'
+              fontWeight: 700,
+              cursor: isGeneratingCover ? 'not-allowed' : 'pointer',
+              boxShadow: isGeneratingCover ? 'none' : `0 6px 20px ${colors.accent}50`,
             }}
           >
-            🎵 生成翻唱版本
+            {isGeneratingCover ? (
+              <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                <Loader2 className="h-5 w-5 animate-spin" />
+                生成中...
+              </span>
+            ) : (
+              '🎵 生成翻唱版本'
+            )}
           </button>
         )}
+
+        {/* Generate Error */}
+        {generateError && (
+          <div
+            className="rounded-xl p-4"
+            style={{
+              backgroundColor: 'rgba(239,68,68,0.1)',
+              color: '#ef4444',
+              border: `1px solid #ef4444`,
+              fontSize: '14px'
+            }}
+          >
+            ❌ {generateError}
+          </div>
+        )}
+
+        {/* Cover Result Card */}
+        <CoverResultCard />
       </div>
     </div>
   )

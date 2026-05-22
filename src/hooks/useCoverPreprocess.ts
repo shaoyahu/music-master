@@ -35,13 +35,13 @@ export function useCoverPreprocess(): UseCoverPreprocessReturn {
         audioUrl,
         audioBase64
       );
-      
-      if (response.status !== 0 && response.status !== 200) {
-        throw new Error(response.status_text || 'Cover preprocess failed');
+
+      if (response.base_resp && response.base_resp.status_code !== 0) {
+        throw new Error(response.base_resp.status_msg || 'Cover preprocess failed');
       }
-      
-      const featureId = response.data?.feature_id || null;
-      const lyrics = response.data?.lyrics || null;
+
+      const featureId = response.cover_feature_id || null;
+      const lyrics = response.lyrics || response.formatted_lyrics || null;
       
       setCoverFeatureId(featureId);
       setCoverLyrics(lyrics);

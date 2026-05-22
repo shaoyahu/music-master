@@ -41,30 +41,44 @@ export function useMusicGeneration(): UseMusicGenerationReturn {
     
     try {
       const response: MusicGenerationResponse = await generateMusic(apiKey, params);
-      
-      if (response.status !== 0 && response.status !== 200) {
-        throw new Error(response.status_text || 'Music generation failed');
+
+      // Check API-level error
+      if (response.base_resp && response.base_resp.status_code !== 0) {
+        throw new Error(response.base_resp.status_msg || 'Music generation failed');
       }
-      
+
       if (!response.data) {
-        throw new Error('No data in response');
+        throw new Error('接口返回数据格式异常，请检查网络或联系开发者');
       }
-      
+
+      const audioData = response.data;
+
+      // Check if generation is complete (status 2 = complete, 1 = processing)
+      if (audioData.status === 1) {
+        throw new Error('音乐仍在生成中，请稍后重试');
+      }
+
       let audioUrl: string | null = null;
-      
-      // If we have a hex string, convert it to an audio URL
-      if (response.data.audio_hex) {
-        audioUrl = hexToAudioUrl(response.data.audio_hex);
-      } else if (response.data.audio_url) {
-        audioUrl = response.data.audio_url;
+      let audioHex: string | null = null;
+
+      // Handle hex format - convert hex string to audio URL
+      if (audioData.audio) {
+        audioHex = audioData.audio;
+        audioUrl = hexToAudioUrl(audioData.audio);
       }
-      
+      // Handle url format - use directly
+      else if (audioData.audio_url) {
+        audioUrl = audioData.audio_url;
+      } else {
+        throw new Error('未获取到音频数据，请重试');
+      }
+
       setAudioResult(
         audioUrl,
-        response.data.audio_hex || null,
-        response.data.duration || null
+        audioHex,
+        response.extra_info?.music_duration || null
       );
-      
+
       return audioUrl;
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Music generation failed';

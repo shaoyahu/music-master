@@ -21,6 +21,7 @@ const SelectTrigger = React.forwardRef<
   const bgColor = isDark ? colors.inputBgDark : colors.inputBg
   const borderColor = isDark ? colors.borderDark : colors.border
   const textColor = isDark ? colors.labelDark : colors.label
+  const accentColor = colors.accent
 
   return (
     <SelectPrimitive.Trigger
@@ -37,12 +38,13 @@ const SelectTrigger = React.forwardRef<
         backgroundColor: bgColor,
         border: `2px solid ${borderColor}`,
         color: textColor,
+        boxShadow: `0 2px 6px rgba(0,0,0,0.08)`,
       }}
       {...props}
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDown className="h-4 w-4 opacity-50" />
+        <ChevronDown className="h-4 w-4 opacity-60" style={{ color: accentColor }} />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )
@@ -102,7 +104,7 @@ const SelectContent = React.forwardRef<
       <SelectPrimitive.Content
         ref={ref}
         className={cn(
-          "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-xl shadow-md",
+          "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-xl shadow-lg",
           "data-[state=open]:animate-in data-[state=closed]:animate-out",
           "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
           "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
@@ -115,6 +117,7 @@ const SelectContent = React.forwardRef<
         style={{
           backgroundColor: bgColor,
           border: `2px solid ${borderColor}`,
+          boxShadow: `0 8px 24px rgba(0,0,0,0.15)`,
         }}
         position={position}
         {...props}
@@ -159,6 +162,7 @@ const SelectItem = React.forwardRef<
 >(({ className, children, isDark, styleType, ...props }, ref) => {
   const colors = styleColors[styleType || 'warm']
   const textColor = isDark ? colors.labelDark : colors.label
+  const accentColor = colors.accent
 
   return (
     <SelectPrimitive.Item
@@ -187,7 +191,7 @@ const SelectItem = React.forwardRef<
         justifyContent: 'center',
       }}>
         <SelectPrimitive.ItemIndicator>
-          <Check className="h-4 w-4" style={{ color: colors.accent }} />
+          <Check className="h-4 w-4" style={{ color: accentColor }} />
         </SelectPrimitive.ItemIndicator>
       </span>
       <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>

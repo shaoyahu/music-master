@@ -5,10 +5,11 @@ import { StyleSelector } from '@/components/StyleSelector'
 import { useAppStore, styleColors } from '@/stores/appStore'
 import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { X, Key } from 'lucide-react'
+import { X, Key, Eye, EyeOff } from 'lucide-react'
 
 function App() {
   const [apiKeyDialogOpen, setApiKeyDialogOpen] = useState(false)
+  const [showApiKey, setShowApiKey] = useState(false)
 
   const activeTab = useAppStore((state) => state.mode)
   const setActiveTab = useAppStore((state) => state.setMode)
@@ -57,17 +58,19 @@ function App() {
             <button
               onClick={() => setApiKeyDialogOpen(true)}
               style={{
-                padding: '8px 12px',
-                borderRadius: '8px',
-                border: `1px solid ${borderColor}`,
-                backgroundColor: 'transparent',
+                padding: '8px 14px',
+                borderRadius: '10px',
+                border: `2px solid ${colors.accent}`,
+                backgroundColor: colors.accent,
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '6px',
                 transition: 'all 0.2s',
-                fontSize: '14px',
-                color: labelColor
+                fontSize: '13px',
+                fontWeight: 600,
+                color: '#fff',
+                boxShadow: `0 2px 8px ${colors.accent}40`,
               }}
             >
               <Key className="h-4 w-4" />
@@ -76,28 +79,35 @@ function App() {
             <button
               onClick={() => setIsDark(!isDark)}
               style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '50%',
-                border: 'none',
-                backgroundColor: isDark ? '#555' : '#f3f4f6',
+                width: '38px',
+                height: '38px',
+                borderRadius: '10px',
+                border: `2px solid ${borderColor}`,
+                backgroundColor: isDark ? 'rgba(60,60,60,0.8)' : 'rgba(255,255,255,0.9)',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 transition: 'all 0.2s',
-                fontSize: '18px'
+                fontSize: '16px',
+                boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
               }}
             >
               {isDark ? '☀️' : '🌙'}
             </button>
-            <StyleSelector value={style} onChange={useAppStore.getState().setStyle} />
+            <StyleSelector value={style} onChange={useAppStore.getState().setStyle} isDark={isDark} borderColor={borderColor} labelColor={labelColor} />
           </div>
         </div>
       </header>
 
       {/* API Key Dialog */}
-      <Dialog.Root open={apiKeyDialogOpen} onOpenChange={setApiKeyDialogOpen}>
+      <Dialog.Root open={apiKeyDialogOpen} onOpenChange={(open) => {
+        setApiKeyDialogOpen(open)
+        if (open) {
+          setTempApiKey(apiKey)
+          setShowApiKey(false)
+        }
+      }}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 bg-black/40 backdrop-blur-sm" />
           <Dialog.Content
@@ -127,7 +137,7 @@ function App() {
             </div>
 
             <Dialog.Description style={{ color: isDark ? '#888' : '#666', fontSize: '14px', marginBottom: '16px' }}>
-              请输入您的 API Key 以启用音乐生成功能。
+              请输入您的 MiniMax API Key 以启用音乐生成功能。密钥将安全保存在本地浏览器中。
             </Dialog.Description>
 
             <div style={{ marginBottom: '16px' }}>
@@ -143,23 +153,48 @@ function App() {
               >
                 API Key
               </label>
-              <input
-                id="api-key"
-                type="password"
-                value={tempApiKey}
-                onChange={(e) => setTempApiKey(e.target.value)}
-                placeholder="请输入 API Key"
-                style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  borderRadius: '12px',
-                  border: `2px solid ${borderColor}`,
-                  backgroundColor: inputBg,
-                  color: isDark ? '#eee' : '#333',
-                  fontSize: '14px',
-                  outline: 'none',
-                }}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  id="api-key"
+                  type={showApiKey ? 'text' : 'password'}
+                  value={tempApiKey}
+                  onChange={(e) => setTempApiKey(e.target.value)}
+                  placeholder="请输入 API Key"
+                  style={{
+                    width: '100%',
+                    padding: '12px 48px 12px 16px',
+                    borderRadius: '12px',
+                    border: `2px solid ${borderColor}`,
+                    backgroundColor: inputBg,
+                    color: isDark ? '#eee' : '#333',
+                    fontSize: '14px',
+                    outline: 'none',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowApiKey(!showApiKey)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    padding: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {showApiKey ? (
+                    <EyeOff className="h-5 w-5" style={{ color: isDark ? '#888' : '#b45309' }} />
+                  ) : (
+                    <Eye className="h-5 w-5" style={{ color: isDark ? '#888' : '#b45309' }} />
+                  )}
+                </button>
+              </div>
             </div>
 
             <div style={{ display: 'flex', gap: '12px' }}>
@@ -167,36 +202,42 @@ function App() {
                 onClick={() => {
                   setApiKey(tempApiKey)
                   setApiKeyDialogOpen(false)
+                  setShowApiKey(false)
                 }}
                 style={{
                   flex: '1',
                   padding: '12px',
                   borderRadius: '12px',
                   border: 'none',
-                  backgroundColor: colors.accentGradient,
+                  backgroundColor: colors.accent,
                   color: '#fff',
                   fontSize: '14px',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   cursor: 'pointer',
                 }}
               >
-                保存
+                确定
               </button>
               <button
-                onClick={() => setApiKeyDialogOpen(false)}
+                onClick={() => {
+                  setApiKey('')
+                  setTempApiKey('')
+                  setApiKeyDialogOpen(false)
+                  setShowApiKey(false)
+                }}
                 style={{
                   flex: '1',
                   padding: '12px',
                   borderRadius: '12px',
-                  border: `1px solid ${borderColor}`,
+                  border: `1px solid #ef4444`,
                   backgroundColor: 'transparent',
-                  color: labelColor,
+                  color: '#ef4444',
                   fontSize: '14px',
                   fontWeight: 500,
                   cursor: 'pointer',
                 }}
               >
-                取消
+                清除
               </button>
             </div>
           </Dialog.Content>
@@ -217,7 +258,7 @@ function App() {
             width: '64px',
             height: '64px',
             borderRadius: '16px',
-            border: 'none',
+            border: `2px solid ${activeTab === 'music' ? colors.sidebarActive : 'transparent'}`,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -225,12 +266,13 @@ function App() {
             gap: '4px',
             cursor: 'pointer',
             transition: 'all 0.2s',
-            backgroundColor: activeTab === 'music' ? colors.sidebarActive : 'transparent',
-            color: activeTab === 'music' ? '#fff' : isDark ? '#aaa' : '#666'
+            backgroundColor: activeTab === 'music' ? colors.sidebarActive : isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)',
+            color: activeTab === 'music' ? '#fff' : isDark ? '#aaa' : '#666',
+            boxShadow: activeTab === 'music' ? `0 4px 12px ${colors.sidebarActive}40` : 'none',
           }}
         >
           <span style={{ fontSize: '24px' }}>🎵</span>
-          <span style={{ fontSize: '11px', fontWeight: 500 }}>音乐</span>
+          <span style={{ fontSize: '11px', fontWeight: 600 }}>音乐</span>
         </button>
         <button
           onClick={() => setActiveTab('cover')}
@@ -238,7 +280,7 @@ function App() {
             width: '64px',
             height: '64px',
             borderRadius: '16px',
-            border: 'none',
+            border: `2px solid ${activeTab === 'cover' ? colors.sidebarActive : 'transparent'}`,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -246,12 +288,13 @@ function App() {
             gap: '4px',
             cursor: 'pointer',
             transition: 'all 0.2s',
-            backgroundColor: activeTab === 'cover' ? colors.sidebarActive : 'transparent',
-            color: activeTab === 'cover' ? '#fff' : isDark ? '#aaa' : '#666'
+            backgroundColor: activeTab === 'cover' ? colors.sidebarActive : isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)',
+            color: activeTab === 'cover' ? '#fff' : isDark ? '#aaa' : '#666',
+            boxShadow: activeTab === 'cover' ? `0 4px 12px ${colors.sidebarActive}40` : 'none',
           }}
         >
           <span style={{ fontSize: '24px' }}>🔄</span>
-          <span style={{ fontSize: '11px', fontWeight: 500 }}>翻唱</span>
+          <span style={{ fontSize: '11px', fontWeight: 600 }}>翻唱</span>
         </button>
         <button
           onClick={() => setLyricsPanelOpen(true)}
@@ -259,7 +302,7 @@ function App() {
             width: '64px',
             height: '64px',
             borderRadius: '16px',
-            border: 'none',
+            border: `2px solid ${lyricsPanelOpen ? colors.sidebarActive : 'transparent'}`,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -267,12 +310,13 @@ function App() {
             gap: '4px',
             cursor: 'pointer',
             transition: 'all 0.2s',
-            backgroundColor: 'transparent',
-            color: isDark ? '#aaa' : '#666'
+            backgroundColor: lyricsPanelOpen ? colors.sidebarActive : isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)',
+            color: lyricsPanelOpen ? '#fff' : isDark ? '#aaa' : '#666',
+            boxShadow: lyricsPanelOpen ? `0 4px 12px ${colors.sidebarActive}40` : 'none',
           }}
         >
           <span style={{ fontSize: '24px' }}>🎤</span>
-          <span style={{ fontSize: '11px', fontWeight: 500 }}>歌词</span>
+          <span style={{ fontSize: '11px', fontWeight: 600 }}>歌词</span>
         </button>
       </nav>
 

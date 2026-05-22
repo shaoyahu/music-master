@@ -2,43 +2,66 @@ const API_BASE = 'https://api.minimaxi.com';
 
 export interface MusicGenerationParams {
   model?: string;
-  title?: string;
   prompt?: string;
   lyrics?: string;
-  style?: string;
-  tags?: string[];
- instrumental?: boolean;
+  stream?: boolean;
+  output_format?: 'url' | 'hex';
+  audio_setting?: {
+    sample_rate?: 16000 | 24000 | 32000 | 44100;
+    bitrate?: 32000 | 64000 | 128000 | 256000;
+    format?: 'mp3' | 'wav' | 'pcm';
+  };
+  aigc_watermark?: boolean;
+  lyrics_optimizer?: boolean;
+  is_instrumental?: boolean;
+  audio_url?: string;
+  audio_base64?: string;
+  cover_feature_id?: string;
 }
 
 export interface MusicGenerationResponse {
-  status: number;
-  status_text: string;
-  trace_id?: string;
   data?: {
+    status?: number;
+    audio?: string;
     audio_url?: string;
-    audio_hex?: string;
-    duration?: number;
-    title?: string;
+  };
+  trace_id?: string;
+  extra_info?: {
+    music_duration?: number;
+    music_sample_rate?: number;
+    music_channel?: number;
+    bitrate?: number;
+    music_size?: number;
+  };
+  analysis_info?: unknown;
+  base_resp?: {
+    status_code: number;
+    status_msg: string;
   };
 }
 
 export interface LyricsGenerationResponse {
-  status: number;
-  status_text: string;
+  song_title?: string;
+  style_tags?: string;
+  lyrics?: string;
   trace_id?: string;
-  data?: {
-    lyrics?: string;
-    title?: string;
+  base_resp?: {
+    status_code: number;
+    status_msg: string;
   };
 }
 
 export interface CoverPreprocessResponse {
-  status: number;
-  status_text: string;
+  cover_feature_id?: string;
+  lyrics?: string;
+  formatted_lyrics?: string;
+  structure_result?: string;
+  audio_duration?: number;
+  audio_url?: string;
   trace_id?: string;
-  data?: {
-    feature_id?: string;
-    lyrics?: string;
+  base_resp?: {
+    status_code: number;
+    status_msg?: string;
   };
 }
 
@@ -84,7 +107,7 @@ export async function generateMusic(
 
 export async function generateLyrics(
   apiKey: string,
-  mode: 'text_to_lyrics' | 'audio_to_lyrics',
+  mode: 'write_full_song' | 'edit',
   prompt?: string,
   lyrics?: string,
   title?: string
@@ -130,6 +153,7 @@ export async function coverPreprocess(
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
+      model: 'music-cover',
       audio_url: audioUrl,
       audio_base64: audioBase64,
     }),

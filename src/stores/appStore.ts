@@ -82,6 +82,12 @@ interface AppState {
   generatedLyrics: string | null
   setGeneratedLyrics: (lyrics: string | null) => void
 
+  // Generated Lyrics Meta
+  generatedLyricsTitle: string | null
+  setGeneratedLyricsTitle: (title: string | null) => void
+  generatedLyricsStyleTags: string | null
+  setGeneratedLyricsStyleTags: (tags: string | null) => void
+
   // Cover Feature
   coverFeatureId: string | null
   setCoverFeatureId: (featureId: string | null) => void
@@ -89,6 +95,10 @@ interface AppState {
   // Cover Lyrics
   coverLyrics: string | null
   setCoverLyrics: (lyrics: string | null) => void
+
+  // Cover Prompt
+  coverPrompt: string
+  setCoverPrompt: (prompt: string) => void
 
   // Clear audio result
   clearAudioResult: () => void
@@ -137,6 +147,12 @@ export const useAppStore = create<AppState>()(
       generatedLyrics: null,
       setGeneratedLyrics: (lyrics) => set({ generatedLyrics: lyrics }),
 
+      // Generated Lyrics Meta
+      generatedLyricsTitle: null,
+      setGeneratedLyricsTitle: (title) => set({ generatedLyricsTitle: title }),
+      generatedLyricsStyleTags: null,
+      setGeneratedLyricsStyleTags: (tags) => set({ generatedLyricsStyleTags: tags }),
+
       // Cover Feature
       coverFeatureId: null,
       setCoverFeatureId: (featureId) => set({ coverFeatureId: featureId }),
@@ -144,6 +160,10 @@ export const useAppStore = create<AppState>()(
       // Cover Lyrics
       coverLyrics: null,
       setCoverLyrics: (lyrics) => set({ coverLyrics: lyrics }),
+
+      // Cover Prompt
+      coverPrompt: '',
+      setCoverPrompt: (prompt) => set({ coverPrompt: prompt }),
 
       // Clear audio result
       clearAudioResult: () =>

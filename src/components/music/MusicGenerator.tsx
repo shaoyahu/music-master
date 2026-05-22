@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Music, Loader2 } from 'lucide-react'
+import { Music, Loader2, Play, Pause, Download, ExternalLink, CheckCircle } from 'lucide-react'
 import { useMusicGeneration } from '@/hooks/useMusicGeneration'
 import { useLyricsGeneration } from '@/hooks/useLyricsGeneration'
 import { useAppStore, styleColors } from '@/stores/appStore'
@@ -14,6 +14,7 @@ import {
 export type AudioFormat = 'mp3' | 'wav' | 'pcm'
 export type SampleRate = 16000 | 24000 | 32000 | 44100
 export type Bitrate = 32000 | 64000 | 128000 | 256000
+export type OutputFormat = 'url' | 'hex'
 
 const formatOptions: { value: AudioFormat; label: string }[] = [
   { value: 'mp3', label: 'MP3' },
@@ -34,6 +35,214 @@ const bitrateOptions: { value: Bitrate; label: string }[] = [
   { value: 128000, label: '128 kbps' },
   { value: 256000, label: '256 kbps' },
 ]
+
+function formatDuration(seconds: number | null): string {
+  if (!seconds) return ''
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+function MusicResultCard() {
+  const { isDark, style, audioUrl, audioHex, musicDuration, clearAudioResult } = useAppStore()
+  const colors = styleColors[style]
+  const borderColor = isDark ? colors.borderDark : colors.border
+  const labelColor = isDark ? colors.labelDark : colors.label
+  const inputBg = isDark ? colors.inputBgDark : colors.inputBg
+
+  const [isPlaying, setIsPlaying] = useState(false)
+
+  const handlePlayPause = () => {
+    const audio = document.getElementById('music-audio') as HTMLAudioElement
+    if (!audio) return
+    if (isPlaying) {
+      audio.pause()
+    } else {
+      audio.play()
+    }
+    setIsPlaying(!isPlaying)
+  }
+
+  const handleDownload = () => {
+    if (!audioHex) return
+    const binaryString = audioHex
+      .replace(/\s/g, '')
+      .match(/.{1,2}/g)
+      ?.map((byte) => String.fromCharCode(parseInt(byte, 16)))
+      .join('') || ''
+    const bytes = new Uint8Array(binaryString.length)
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i)
+    }
+    const blob = new Blob([bytes], { type: 'audio/mpeg' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `music-${Date.now()}.mp3`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  if (!audioUrl && !audioHex) return null
+
+  return (
+    <div
+      className="rounded-2xl p-5 border"
+      style={{
+        background: inputBg,
+        borderColor: borderColor,
+      }}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <CheckCircle className="h-5 w-5" style={{ color: colors.accent }} />
+          <span style={{ color: labelColor, fontWeight: 600, fontSize: '15px' }}>
+            音乐生成成功
+          </span>
+          {musicDuration && (
+            <span style={{ color: isDark ? '#666' : '#b45309', fontSize: '13px' }}>
+              {formatDuration(musicDuration)}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={clearAudioResult}
+          style={{
+            color: isDark ? '#666' : '#b45309',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '12px',
+          }}
+        >
+          清除
+        </button>
+      </div>
+
+      <div className="flex items-center gap-3">
+        {/* Play/Pause Button */}
+        <button
+          onClick={handlePlayPause}
+          style={{
+            width: '48px',
+            height: '48px',
+            borderRadius: '50%',
+            border: 'none',
+            backgroundColor: colors.accent,
+            color: '#fff',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+        >
+          {isPlaying ? (
+            <Pause className="h-5 w-5" />
+          ) : (
+            <Play className="h-5 w-5" style={{ marginLeft: '2px' }} />
+          )}
+        </button>
+
+        {/* Progress Bar */}
+        <div className="flex-1">
+          <audio
+            id="music-audio"
+            src={audioUrl || undefined}
+            style={{ display: 'none' }}
+            onTimeUpdate={(e) => {
+              const audio = e.target as HTMLAudioElement
+              const progress = document.getElementById('music-progress') as HTMLDivElement
+              if (progress && audio.duration) {
+                progress.style.width = `${(audio.currentTime / audio.duration) * 100}%`
+              }
+            }}
+            onLoadedMetadata={(e) => {
+              const audio = e.target as HTMLAudioElement
+              const durationEl = document.getElementById('music-duration')
+              if (durationEl && audio.duration) {
+                durationEl.textContent = formatDuration(Math.floor(audio.duration))
+              }
+            }}
+            onEnded={() => setIsPlaying(false)}
+          />
+          <div
+            style={{
+              height: '6px',
+              borderRadius: '3px',
+              backgroundColor: isDark ? '#444' : '#e5e5e5',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              id="music-progress"
+              style={{
+                height: '100%',
+                width: '0%',
+                backgroundColor: colors.accent,
+                transition: 'width 0.1s linear',
+              }}
+            />
+          </div>
+          <div className="flex justify-between mt-1" style={{ fontSize: '11px', color: isDark ? '#666' : '#b45309' }}>
+            <span id="music-current">0:00</span>
+            <span id="music-duration">{formatDuration(musicDuration)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="flex gap-2 mt-4">
+        {audioHex && (
+          <button
+            onClick={handleDownload}
+            style={{
+              flex: 1,
+              padding: '10px',
+              borderRadius: '10px',
+              border: `1px solid ${borderColor}`,
+              backgroundColor: 'transparent',
+              color: labelColor,
+              fontSize: '13px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+            }}
+          >
+            <Download className="h-4 w-4" />
+            下载音频
+          </button>
+        )}
+        {audioUrl && (
+          <a
+            href={audioUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              flex: 1,
+              padding: '10px',
+              borderRadius: '10px',
+              border: `1px solid ${borderColor}`,
+              backgroundColor: 'transparent',
+              color: labelColor,
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              textDecoration: 'none',
+            }}
+          >
+            <ExternalLink className="h-4 w-4" />
+            打开链接
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
 
 export function MusicGenerator() {
   const {
@@ -57,18 +266,26 @@ export function MusicGenerator() {
   const [localFormat, setLocalFormat] = useState<AudioFormat>('mp3')
   const [localSampleRate, setLocalSampleRate] = useState<SampleRate>(44100)
   const [localBitrate, setLocalBitrate] = useState<Bitrate>(256000)
+  const [localOutputFormat, setLocalOutputFormat] = useState<OutputFormat>('url')
 
   const handleGenerate = useCallback(async () => {
     try {
       await generateMusic({
+        model: 'music-2.6',
         prompt: localPrompt,
         lyrics: localIsInstrumental ? '' : localLyrics,
-        instrumental: localIsInstrumental,
+        is_instrumental: localIsInstrumental,
+        output_format: localOutputFormat,
+        audio_setting: {
+          sample_rate: localSampleRate,
+          bitrate: localBitrate,
+          format: localFormat,
+        },
       })
     } catch {
       // Error is handled in the hook
     }
-  }, [generateMusic, localPrompt, localLyrics, localIsInstrumental])
+  }, [generateMusic, localPrompt, localLyrics, localIsInstrumental, localOutputFormat, localSampleRate, localBitrate, localFormat])
 
   const handleApplyGeneratedLyrics = useCallback(() => {
     if (generatedLyrics) {
@@ -87,7 +304,7 @@ export function MusicGenerator() {
 
   return (
     <div
-      className="rounded-2xl p-6 shadow-lg border"
+      className="rounded-2xl p-6 shadow-lg border flex flex-col"
       style={{
         background: cardBg,
         borderColor: borderColor,
@@ -114,7 +331,7 @@ export function MusicGenerator() {
         </div>
       </div>
 
-      <div className="space-y-5">
+      <div className="space-y-5 flex-1">
         {/* Prompt Input */}
         <div className="space-y-2">
           <label style={{ color: labelColor, fontWeight: 500 }}>歌曲描述</label>
@@ -123,7 +340,7 @@ export function MusicGenerator() {
             placeholder="例如：抒情的流行音乐，关于梦想和坚持..."
             value={localPrompt}
             onChange={(e) => setLocalPrompt(e.target.value)}
-            style={{ 
+            style={{
               width: '100%',
               height: '48px',
               borderRadius: '12px',
@@ -245,16 +462,17 @@ export function MusicGenerator() {
                 width: '100%',
                 padding: '12px',
                 borderRadius: '12px',
-                border: `2px solid ${borderColor}`,
+                border: 'none',
                 backgroundColor: isGeneratingLyrics
-                  ? (isDark ? '#444' : borderColor)
-                  : colors.accentGradient,
+                  ? (isDark ? '#555' : colors.accent)
+                  : colors.accent,
                 color: '#fff',
                 fontSize: '14px',
-                fontWeight: 500,
+                fontWeight: 600,
                 cursor: isGeneratingLyrics ? 'not-allowed' : 'pointer',
-                opacity: isGeneratingLyrics ? 0.5 : 1,
-                transition: 'all 0.2s'
+                opacity: isGeneratingLyrics ? 0.6 : 1,
+                transition: 'all 0.2s',
+                boxShadow: isGeneratingLyrics ? 'none' : `0 4px 12px ${colors.accent}50`,
               }}
             >
               {isGeneratingLyrics ? (
@@ -269,23 +487,71 @@ export function MusicGenerator() {
           </div>
         )}
 
-        
+
         {/* Audio Settings */}
-        <div 
+        <div
           className="p-4 rounded-xl space-y-4"
           style={{ backgroundColor: inputBg, border: `1px solid ${borderColor}` }}
         >
           <label style={{ color: labelColor, fontWeight: 500 }}>音频设置</label>
-          
+
+          {/* Output Format */}
+          <div className="space-y-2">
+            <label style={{ color: labelColor, fontSize: '13px' }}>输出方式</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setLocalOutputFormat('url')}
+                style={{
+                  padding: '10px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  backgroundColor: localOutputFormat === 'url' ? colors.accent : (isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)'),
+                  color: localOutputFormat === 'url' ? '#fff' : labelColor,
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: localOutputFormat === 'url' ? `0 4px 12px ${colors.accent}40` : 'none',
+                }}
+              >
+                🌐 URL 链接
+                <span style={{ display: 'block', fontSize: '11px', fontWeight: 400, marginTop: '2px', opacity: localOutputFormat === 'url' ? 0.9 : 0.7 }}>
+                  可直接播放/下载
+                </span>
+              </button>
+              <button
+                onClick={() => setLocalOutputFormat('hex')}
+                style={{
+                  padding: '10px',
+                  borderRadius: '10px',
+                  border: 'none',
+                  backgroundColor: localOutputFormat === 'hex' ? colors.accent : (isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)'),
+                  color: localOutputFormat === 'hex' ? '#fff' : labelColor,
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  boxShadow: localOutputFormat === 'hex' ? `0 4px 12px ${colors.accent}40` : 'none',
+                }}
+              >
+                🔢 Hex 编码
+                <span style={{ display: 'block', fontSize: '11px', fontWeight: 400, marginTop: '2px', opacity: localOutputFormat === 'hex' ? 0.9 : 0.7 }}>
+                  适合网页播放
+                </span>
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-3 gap-4">
             {/* Format */}
             <div className="space-y-2">
-              <label style={{ color: labelColor, fontSize: '13px' }}>格式</label>
+              <label style={{ color: labelColor, fontSize: '13px', fontWeight: 600 }}>格式</label>
               <Select value={localFormat} onValueChange={(v) => setLocalFormat(v as AudioFormat)}>
                 <SelectTrigger isDark={isDark} styleType={style} style={{
                   height: '40px',
-                  borderRadius: '8px',
+                  borderRadius: '10px',
                   fontSize: '13px',
+                  fontWeight: 500,
                 }}>
                   <SelectValue />
                 </SelectTrigger>
@@ -299,12 +565,13 @@ export function MusicGenerator() {
 
             {/* Sample Rate */}
             <div className="space-y-2">
-              <label style={{ color: labelColor, fontSize: '13px' }}>采样率</label>
+              <label style={{ color: labelColor, fontSize: '13px', fontWeight: 600 }}>采样率</label>
               <Select value={String(localSampleRate)} onValueChange={(v) => setLocalSampleRate(parseInt(v) as SampleRate)}>
                 <SelectTrigger isDark={isDark} styleType={style} style={{
                   height: '40px',
-                  borderRadius: '8px',
+                  borderRadius: '10px',
                   fontSize: '13px',
+                  fontWeight: 500,
                 }}>
                   <SelectValue />
                 </SelectTrigger>
@@ -318,12 +585,13 @@ export function MusicGenerator() {
 
             {/* Bitrate */}
             <div className="space-y-2">
-              <label style={{ color: labelColor, fontSize: '13px' }}>比特率</label>
+              <label style={{ color: labelColor, fontSize: '13px', fontWeight: 600 }}>比特率</label>
               <Select value={String(localBitrate)} onValueChange={(v) => setLocalBitrate(parseInt(v) as Bitrate)}>
                 <SelectTrigger isDark={isDark} styleType={style} style={{
                   height: '40px',
-                  borderRadius: '8px',
+                  borderRadius: '10px',
                   fontSize: '13px',
+                  fontWeight: 500,
                 }}>
                   <SelectValue />
                 </SelectTrigger>
@@ -339,11 +607,11 @@ export function MusicGenerator() {
 
         {/* Error Message */}
         {musicError && (
-          <div 
+          <div
             className="rounded-xl p-4"
-            style={{ 
-              backgroundColor: 'rgba(239,68,68,0.1)', 
-              color: '#ef4444', 
+            style={{
+              backgroundColor: 'rgba(239,68,68,0.1)',
+              color: '#ef4444',
               border: `1px solid #ef4444`,
               fontSize: '14px'
             }}
@@ -352,24 +620,27 @@ export function MusicGenerator() {
           </div>
         )}
 
+        {/* Music Result */}
+        <MusicResultCard />
+
         {/* Generate Button */}
         <button
           onClick={handleGenerate}
-          disabled={isGeneratingMusic || !localPrompt}
+          disabled={isGeneratingMusic || (!localIsInstrumental && !localLyrics && !localPrompt)}
           style={{
             width: '100%',
             height: '56px',
             borderRadius: '14px',
-            backgroundColor: isGeneratingMusic || !localPrompt
-              ? (isDark ? '#444' : borderColor)
-              : colors.accentGradient,
+            backgroundColor: isGeneratingMusic || (!localIsInstrumental && !localLyrics && !localPrompt)
+              ? (isDark ? '#555' : colors.accent)
+              : colors.accent,
             color: '#fff',
             border: 'none',
             fontSize: '16px',
-            fontWeight: 600,
-            cursor: isGeneratingMusic || !localPrompt ? 'not-allowed' : 'pointer',
+            fontWeight: 700,
+            cursor: isGeneratingMusic || (!localIsInstrumental && !localLyrics && !localPrompt) ? 'not-allowed' : 'pointer',
             transition: 'all 0.2s',
-            boxShadow: isGeneratingMusic || !localPrompt ? 'none' : `0 4px 12px ${colors.accent}40`
+            boxShadow: isGeneratingMusic || (!localIsInstrumental && !localLyrics && !localPrompt) ? 'none' : `0 6px 20px ${colors.accent}50`,
           }}
         >
           {isGeneratingMusic ? (
