@@ -49,8 +49,8 @@ export function useCoverGeneration(): UseCoverGenerationReturn {
         throw new Error('音乐生成还在处理中，请稍后再试');
       }
 
-      const audioUrl = response.data?.audio_url || null;
-      const audioHex = response.data?.audio || null;
+      const audioUrl = response.data?.audio || null;
+      const audioHex = null;
       const duration = response.extra_info?.music_duration || null;
 
       if (!audioUrl && !audioHex) {

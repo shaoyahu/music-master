@@ -3,7 +3,7 @@ import { Upload, Link as LinkIcon, Music, Loader2 } from 'lucide-react'
 import { useCoverPreprocess } from '@/hooks/useCoverPreprocess'
 import { useCoverGeneration } from '@/hooks/useCoverGeneration'
 import { useAppStore, styleColors } from '@/stores/appStore'
-import { CoverResultCard } from './CoverResultCard'
+import { fileToBase64WithNCMSupport } from '@/lib/ncm'
 
 export function CoverProcessor() {
   const {
@@ -22,6 +22,7 @@ export function CoverProcessor() {
 
   const [localCoverUrl, setLocalCoverUrl] = useState('')
   const [localCoverLyrics, setLocalCoverLyrics] = useState(coverLyrics || '')
+  const [fileError, setFileError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Sync local lyrics when store coverLyrics updates (after preprocess)
@@ -35,11 +36,18 @@ export function CoverProcessor() {
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
       if (file) {
+        setFileError(null)
+        console.log('[CoverProcessor] File selected:', file.name, 'size:', file.size)
         try {
-          const base64 = await fileToBase64(file)
+          const result = await fileToBase64WithNCMSupport(file)
+          const { base64, isNCM } = result
+
+          console.log('[CoverProcessor] File converted, isNCM:', isNCM, 'base64 length:', base64.length)
           await preprocess(undefined, base64)
-        } catch {
-          // Error is handled in the hook
+        } catch (err) {
+          const errorMessage = err instanceof Error ? err.message : '文件处理失败'
+          console.error('[CoverProcessor] Error:', errorMessage)
+          setFileError(errorMessage)
         }
       }
     },
@@ -106,7 +114,7 @@ export function CoverProcessor() {
           <input
             ref={fileInputRef}
             type="file"
-            accept="audio/*"
+            accept="audio/*,.ncm"
             onChange={handleFileSelect}
             className="hidden"
           />
@@ -223,12 +231,27 @@ export function CoverProcessor() {
         </div>
 
         {/* Error Message */}
-        {coverError && (
-          <div 
+        {fileError && (
+          <div
             className="rounded-xl p-4"
-            style={{ 
-              backgroundColor: 'rgba(239,68,68,0.1)', 
-              color: '#ef4444', 
+            style={{
+              backgroundColor: 'rgba(239,68,68,0.1)',
+              color: '#ef4444',
+              border: `1px solid #ef4444`,
+              fontSize: '14px'
+            }}
+          >
+            ❌ {fileError}
+          </div>
+        )}
+
+        {/* API Error Message */}
+        {coverError && (
+          <div
+            className="rounded-xl p-4"
+            style={{
+              backgroundColor: 'rgba(239,68,68,0.1)',
+              color: '#ef4444',
               border: `1px solid #ef4444`,
               fontSize: '14px'
             }}
@@ -340,23 +363,7 @@ export function CoverProcessor() {
             ❌ {generateError}
           </div>
         )}
-
-        {/* Cover Result Card */}
-        <CoverResultCard />
       </div>
     </div>
   )
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result as string
-      const base64 = result.split(',')[1]
-      resolve(base64)
-    }
-    reader.onerror = () => reject(new Error('文件读取失败'))
-    reader.readAsDataURL(file)
-  })
 }

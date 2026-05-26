@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Play, Pause, Download, ExternalLink, CheckCircle } from 'lucide-react'
 import { useAppStore, styleColors } from '@/stores/appStore'
 
@@ -10,13 +10,21 @@ function formatDuration(seconds: number | null): string {
 }
 
 export function CoverResultCard() {
-  const { audioUrl, audioHex, musicDuration, clearAudioResult, isDark, style } = useAppStore()
+  const { audioUrl, musicDuration, clearAudioResult, isDark, style } = useAppStore()
   const colors = styleColors[style]
   const borderColor = isDark ? colors.borderDark : colors.border
   const labelColor = isDark ? colors.labelDark : colors.label
   const inputBg = isDark ? colors.inputBgDark : colors.inputBg
 
   const [isPlaying, setIsPlaying] = useState(false)
+  const [audioError, setAudioError] = useState<string | null>(null)
+
+  // Reset error when audioUrl changes
+  useEffect(() => {
+    if (audioUrl) {
+      setAudioError(null)
+    }
+  }, [audioUrl])
 
   const handlePlayPause = useCallback(() => {
     const audio = document.getElementById('cover-audio') as HTMLAudioElement
@@ -24,32 +32,46 @@ export function CoverResultCard() {
     if (isPlaying) {
       audio.pause()
     } else {
-      audio.play()
+      audio.play().catch(err => {
+        console.error('Play failed:', err, 'URL:', audio.src)
+        setAudioError(`播放失败: ${err.message || '未知错误'}`)
+      })
     }
     setIsPlaying(!isPlaying)
   }, [isPlaying])
 
-  const handleDownload = useCallback(() => {
-    if (!audioHex) return
-    const binaryString = audioHex
-      .replace(/\s/g, '')
-      .match(/.{1,2}/g)
-      ?.map((byte) => String.fromCharCode(parseInt(byte, 16)))
-      .join('') || ''
-    const bytes = new Uint8Array(binaryString.length)
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i)
-    }
-    const blob = new Blob([bytes], { type: 'audio/mpeg' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `cover-${Date.now()}.mp3`
-    a.click()
-    URL.revokeObjectURL(url)
-  }, [audioHex])
+  const handleProgressClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const audio = document.getElementById('cover-audio') as HTMLAudioElement
+    if (!audio) return
+    // Use audio.duration if available, otherwise fallback to musicDuration (in seconds)
+    const duration = audio.duration || (musicDuration ? musicDuration / 1000 : 0)
+    if (!duration) return
+    const rect = e.currentTarget.getBoundingClientRect()
+    const percent = (e.clientX - rect.left) / rect.width
+    audio.currentTime = percent * duration
+  }, [musicDuration])
 
-  if (!audioUrl && !audioHex) return null
+  const handleDownload = useCallback(async () => {
+    if (!audioUrl) return
+    try {
+      const response = await fetch(audioUrl)
+      const blob = await response.blob()
+      const downloadUrl = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = downloadUrl
+      a.download = `cover-${Date.now()}.mp3`
+      a.click()
+      URL.revokeObjectURL(downloadUrl)
+    } catch (err) {
+      console.error('Download failed:', err)
+      // Fallback: open in new tab
+      window.open(audioUrl, '_blank')
+    }
+  }, [audioUrl])
+
+  const hasAudio = audioUrl && audioUrl.length > 0
+
+  if (!hasAudio) return null
 
   return (
     <div
@@ -112,8 +134,9 @@ export function CoverResultCard() {
         <div className="flex-1">
           <audio
             id="cover-audio"
-            src={audioUrl || undefined}
+            src={hasAudio ? audioUrl : undefined}
             style={{ display: 'none' }}
+            preload="none"
             onTimeUpdate={(e) => {
               const audio = e.target as HTMLAudioElement
               const progress = document.getElementById('cover-progress') as HTMLDivElement
@@ -129,6 +152,12 @@ export function CoverResultCard() {
               }
             }}
             onEnded={() => setIsPlaying(false)}
+            onError={(e) => {
+              const audio = e.target as HTMLAudioElement
+              const errorMsg = `Audio load error: ${audio.error?.message || 'unknown'}, src: ${audio.src}`
+              console.error(errorMsg)
+              setAudioError(errorMsg)
+            }}
           />
           <div
             id="cover-progress"
@@ -138,7 +167,9 @@ export function CoverResultCard() {
               backgroundColor: isDark ? '#444' : '#e5e5e5',
               width: '0%',
               transition: 'width 0.1s',
+              cursor: 'pointer',
             }}
+            onClick={handleProgressClick}
           />
           <div className="flex justify-between mt-1" style={{ fontSize: '12px', color: isDark ? '#666' : '#b45309' }}>
             <span id="cover-current">0:00</span>
@@ -146,7 +177,7 @@ export function CoverResultCard() {
           </div>
         </div>
 
-        {audioUrl && (
+        {hasAudio && (
           <a
             href={audioUrl}
             target="_blank"
@@ -169,7 +200,7 @@ export function CoverResultCard() {
           </a>
         )}
 
-        {audioHex && (
+        {hasAudio && (
           <button
             onClick={handleDownload}
             style={{
@@ -189,6 +220,12 @@ export function CoverResultCard() {
           </button>
         )}
       </div>
+
+      {audioError && (
+        <div className="mt-3 text-xs" style={{ color: '#ef4444' }}>
+          ⚠️ {audioError}
+        </div>
+      )}
     </div>
   )
 }

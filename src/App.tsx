@@ -1,6 +1,7 @@
 import { MusicGenerator } from '@/components/music'
 import { LyricsPanel, LyricsExample } from '@/components/lyrics'
 import { CoverProcessor } from '@/components/cover'
+import { AudioResultPanel } from '@/components/AudioResultPanel'
 import { StyleSelector } from '@/components/StyleSelector'
 import { useAppStore, styleColors } from '@/stores/appStore'
 import { useState } from 'react'
@@ -28,6 +29,8 @@ function App() {
   const bgGradient = style === 'warm' ? 'from-amber-50 via-orange-50 to-amber-100'
     : style === 'nature' ? 'from-green-50 via-emerald-50 to-teal-50'
     : 'from-slate-800 via-slate-900 to-slate-800'
+
+  const audioUrl = useAppStore((state) => state.audioUrl)
 
   const headerBg = isDark ? 'rgba(30,30,30,0.95)' : 'rgba(255,255,255,0.95)'
   const sidebarBg = isDark ? 'rgba(30,30,30,0.95)' : 'rgba(255,255,255,0.95)'
@@ -379,6 +382,9 @@ function App() {
           </div>
         </div>
       </main>
+
+      {/* Floating Audio Player */}
+      {audioUrl && <AudioResultPanel />}
     </div>
   )
 }

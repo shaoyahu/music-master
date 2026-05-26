@@ -28,13 +28,17 @@ export function useCoverPreprocess(): UseCoverPreprocessReturn {
   }> => {
     setIsLoading(true);
     setError(null);
-    
+
+    console.log('[useCoverPreprocess] Starting preprocess, audioBase64 length:', audioBase64?.length)
+
     try {
       const response: CoverPreprocessResponse = await coverPreprocess(
         apiKey,
         audioUrl,
         audioBase64
       );
+
+      console.log('[useCoverPreprocess] Response:', response)
 
       if (response.base_resp && response.base_resp.status_code !== 0) {
         throw new Error(response.base_resp.status_msg || 'Cover preprocess failed');
