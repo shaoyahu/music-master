@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Music, Loader2 } from 'lucide-react'
 import { useMusicGeneration } from '@/hooks/useMusicGeneration'
 import { useLyricsGeneration } from '@/hooks/useLyricsGeneration'
@@ -39,6 +39,8 @@ const bitrateOptions: { value: Bitrate; label: string }[] = [
 export function MusicGenerator() {
   const {
     generatedLyrics,
+    pendingLyricsToApply,
+    setPendingLyricsToApply,
     mode,
     setMode,
     isDark,
@@ -88,6 +90,14 @@ export function MusicGenerator() {
   const handleSwitchToMusic = useCallback(() => {
     setMode('music')
   }, [setMode])
+
+  // Apply pending lyrics when they change
+  useEffect(() => {
+    if (pendingLyricsToApply) {
+      setLocalLyrics(pendingLyricsToApply)
+      setPendingLyricsToApply(null)
+    }
+  }, [pendingLyricsToApply, setPendingLyricsToApply])
 
   const borderColor = isDark ? colors.borderDark : colors.border
   const inputBg = isDark ? colors.inputBgDark : colors.inputBg

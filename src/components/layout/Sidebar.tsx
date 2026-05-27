@@ -1,4 +1,4 @@
-import { Music, Mic2, Upload } from 'lucide-react'
+import { Music, Mic2, Upload, Radio } from 'lucide-react'
 import { clsx } from 'clsx'
 
 type Mode = 'music' | 'lyrics' | 'cover'
@@ -7,6 +7,8 @@ interface SidebarProps {
   mode: Mode
   onModeChange: (mode: Mode) => void
   onLyricsPanelOpen: () => void
+  onPlayerToggle: () => void
+  isPlayerActive?: boolean
 }
 
 interface NavButton {
@@ -16,7 +18,7 @@ interface NavButton {
   onClick: () => void
 }
 
-export function Sidebar({ mode, onModeChange, onLyricsPanelOpen }: SidebarProps) {
+export function Sidebar({ mode, onModeChange, onLyricsPanelOpen, onPlayerToggle, isPlayerActive }: SidebarProps) {
   const navButtons: NavButton[] = [
     {
       id: 'music',
@@ -66,6 +68,23 @@ export function Sidebar({ mode, onModeChange, onLyricsPanelOpen }: SidebarProps)
           </button>
         ))}
       </nav>
+
+      {/* Player Button */}
+      <div className="mt-auto px-3">
+        <button
+          onClick={onPlayerToggle}
+          className={clsx(
+            'flex items-center gap-3 px-4 py-3 rounded-xl w-full',
+            'transition-all duration-200',
+            isPlayerActive
+              ? 'bg-warm-500 text-white shadow-md'
+              : 'text-warm-700 hover:bg-warm-100'
+          )}
+        >
+          <Radio className={clsx('w-5 h-5', isPlayerActive ? 'text-white' : 'text-warm-500')} />
+          <span className="font-medium">播放器</span>
+        </button>
+      </div>
     </aside>
   )
 }

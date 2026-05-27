@@ -61,10 +61,16 @@ export function useMusicGeneration(): UseMusicGenerationReturn {
       let audioUrl: string | null = null;
       let audioHex: string | null = null;
 
-      // Handle hex format - convert hex string to audio URL
+      // Handle audio data - check if it's a URL or hex data
       if (audioData.audio) {
-        audioHex = audioData.audio;
-        audioUrl = hexToAudioUrl(audioData.audio);
+        if (audioData.audio.startsWith('http://') || audioData.audio.startsWith('https://')) {
+          // It's already a URL, use directly
+          audioUrl = audioData.audio;
+        } else {
+          // It's hex data, convert to audio URL
+          audioHex = audioData.audio;
+          audioUrl = hexToAudioUrl(audioData.audio);
+        }
       }
       // Handle url format - use directly
       else if (audioData.audio_url) {
@@ -78,6 +84,11 @@ export function useMusicGeneration(): UseMusicGenerationReturn {
         audioHex,
         response.extra_info?.music_duration || null
       );
+      console.log('[useMusicGeneration] setAudioResult called', { audioUrl, hasHex: !!audioHex });
+
+      // Add to playlist and auto open the audio result panel when music is generated
+      useAppStore.getState().addToMusicPlaylist(audioUrl, audioHex, response.extra_info?.music_duration || null, params.lyrics || null);
+      useAppStore.getState().setAudioResultPanelOpen(true);
 
       return audioUrl;
     } catch (err) {

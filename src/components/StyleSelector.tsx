@@ -7,7 +7,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 
-export type Style = 'warm' | 'nature' | 'cyberpunk'
+export type Style = 'warm' | 'nature' | 'cyberpunk' | 'blue' | 'cartoon' | 'minimal' | 'retro' | 'dark' | 'pink'
 
 interface StyleSelectorProps {
   value: Style
@@ -35,6 +35,42 @@ const styles = [
     name: '赛博朋克',
     description: '霓虹色彩，潮流科技感',
     colors: ['#0f172a', '#1e293b', '#06b6d4', '#8b5cf6'],
+  },
+  {
+    id: 'blue' as Style,
+    name: '蓝色主题',
+    description: '静谧海洋蓝，高级商务感',
+    colors: ['#eff6ff', '#dbeafe', '#60a5fa', '#3b82f6'],
+  },
+  {
+    id: 'cartoon' as Style,
+    name: '卡通风格',
+    description: '活泼可爱的卡通配色',
+    colors: ['#fef9c3', '#fde047', '#facc15', '#eab308'],
+  },
+  {
+    id: 'minimal' as Style,
+    name: '极简风格',
+    description: '黑白灰极简，优雅克制',
+    colors: ['#fafafa', '#e5e5e5', '#a3a3a3', '#404040'],
+  },
+  {
+    id: 'retro' as Style,
+    name: '复古风格',
+    description: '怀旧胶片感，温暖复古',
+    colors: ['#fff7ed', '#fed7aa', '#fb923c', '#c2410c'],
+  },
+  {
+    id: 'dark' as Style,
+    name: '暗夜风格',
+    description: '深邃暗色调，沉浸体验',
+    colors: ['#18181b', '#27272a', '#71717a', '#f4f4f5'],
+  },
+  {
+    id: 'pink' as Style,
+    name: '浅绿清新',
+    description: '清新淡绿色，舒适护眼',
+    colors: ['#f5fffe', '#e6f9f0', '#c3f5db', '#86efac'],
   },
 ]
 

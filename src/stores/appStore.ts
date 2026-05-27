@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type Mode = 'music' | 'lyrics' | 'cover'
-export type Style = 'warm' | 'nature' | 'cyberpunk'
+export type Style = 'warm' | 'nature' | 'cyberpunk' | 'blue' | 'cartoon' | 'minimal' | 'retro' | 'dark' | 'pink'
 
 // Style color palettes
 export const styleColors = {
@@ -45,6 +45,84 @@ export const styleColors = {
     labelDark: '#c4b5fd',
     sidebarActive: '#8b5cf6',
   },
+  blue: {
+    accent: '#3b82f6',
+    accentGradient: 'linear-gradient(135deg, #3b82f6, #2563eb)',
+    cardBg: 'linear-gradient(135deg, #eff6ff, #dbeafe)',
+    cardBgDark: 'linear-gradient(135deg, rgba(30,40,60,0.95), rgba(25,35,55,0.95))',
+    inputBg: 'rgba(255,255,255,0.9)',
+    inputBgDark: 'rgba(30,40,60,0.8)',
+    border: '#bfdbfe',
+    borderDark: '#444',
+    label: '#1e40af',
+    labelDark: '#ccc',
+    sidebarActive: '#3b82f6',
+  },
+  cartoon: {
+    accent: '#eab308',
+    accentGradient: 'linear-gradient(135deg, #facc15, #eab308)',
+    cardBg: 'linear-gradient(135deg, #fef9c3, #fef08a)',
+    cardBgDark: 'linear-gradient(135deg, rgba(50,50,30,0.95), rgba(40,40,25,0.95))',
+    inputBg: 'rgba(255,255,255,0.9)',
+    inputBgDark: 'rgba(50,50,30,0.8)',
+    border: '#fde047',
+    borderDark: '#444',
+    label: '#713f12',
+    labelDark: '#ccc',
+    sidebarActive: '#eab308',
+  },
+  minimal: {
+    accent: '#404040',
+    accentGradient: 'linear-gradient(135deg, #404040, #262626)',
+    cardBg: 'linear-gradient(135deg, #fafafa, #f5f5f5)',
+    cardBgDark: 'linear-gradient(135deg, rgba(40,40,40,0.95), rgba(30,30,30,0.95))',
+    inputBg: 'rgba(255,255,255,0.9)',
+    inputBgDark: 'rgba(40,40,40,0.8)',
+    border: '#d4d4d4',
+    borderDark: '#444',
+    label: '#171717',
+    labelDark: '#ccc',
+    sidebarActive: '#404040',
+  },
+  retro: {
+    accent: '#c2410c',
+    accentGradient: 'linear-gradient(135deg, #fb923c, #ea580c)',
+    cardBg: 'linear-gradient(135deg, #fff7ed, #fed7aa)',
+    cardBgDark: 'linear-gradient(135deg, rgba(50,35,30,0.95), rgba(40,30,25,0.95))',
+    inputBg: 'rgba(255,255,255,0.9)',
+    inputBgDark: 'rgba(50,35,30,0.8)',
+    border: '#fed7aa',
+    borderDark: '#444',
+    label: '#7c2d12',
+    labelDark: '#ccc',
+    sidebarActive: '#c2410c',
+  },
+  dark: {
+    accent: '#71717a',
+    accentGradient: 'linear-gradient(135deg, #71717a, #52525b)',
+    cardBg: 'linear-gradient(135deg, #27272a, #18181b)',
+    cardBgDark: 'linear-gradient(135deg, rgba(40,40,40,0.95), rgba(30,30,30,0.95))',
+    inputBg: 'rgba(50,50,50,0.9)',
+    inputBgDark: 'rgba(50,50,50,0.8)',
+    border: '#3f3f46',
+    borderDark: '#444',
+    label: '#f4f4f5',
+    labelDark: '#ccc',
+    sidebarActive: '#71717a',
+  },
+  pink: {
+    accent: '#86efac',
+    accentGradient: 'linear-gradient(135deg, #a7f3d0, #6ee7b7)',
+    cardBg: 'linear-gradient(135deg, #f5fffe, #e6f9f0)',
+    cardBgDark: 'linear-gradient(135deg, rgba(40,60,50,0.95), rgba(35,50,45,0.95))',
+    inputBg: 'rgba(255,255,255,0.95)',
+    inputBgDark: 'rgba(40,60,50,0.8)',
+    border: '#d1fae5',
+    borderDark: '#444',
+    label: '#065f46',
+    labelDark: '#ccc',
+    sidebarActive: '#86efac',
+  },
 } as const
 
 interface AppState {
@@ -78,9 +156,27 @@ interface AppState {
   musicDuration: number | null
   setAudioResult: (url: string | null, hex: string | null, duration: number | null) => void
 
+  // Audio Result Panel - controls the floating panel visibility
+  audioResultPanelOpen: boolean
+  setAudioResultPanelOpen: (open: boolean) => void
+
+  // Lyrics Panel - controls the lyrics floating panel visibility
+  lyricsPanelShow: boolean
+  setLyricsPanelShow: (show: boolean) => void
+
+  // Music Playlist - stores generated music history
+  musicPlaylist: Array<{ url: string; hex: string | null; duration: number | null; createdAt: number; lyrics?: string | null }>
+  addToMusicPlaylist: (url: string, hex: string | null, duration: number | null, lyrics?: string | null) => void
+  removeFromMusicPlaylist: (createdAt: number) => void
+  clearMusicPlaylist: () => void
+
   // Generated Lyrics
   generatedLyrics: string | null
   setGeneratedLyrics: (lyrics: string | null) => void
+
+  // Pending Lyrics to apply to music generator
+  pendingLyricsToApply: string | null
+  setPendingLyricsToApply: (lyrics: string | null) => void
 
   // Generated Lyrics Meta
   generatedLyricsTitle: string | null
@@ -143,9 +239,34 @@ export const useAppStore = create<AppState>()(
       setAudioResult: (url, hex, duration) =>
         set({ audioUrl: url, audioHex: hex, musicDuration: duration }),
 
+      // Audio Result Panel
+      audioResultPanelOpen: false,
+      setAudioResultPanelOpen: (open) => set({ audioResultPanelOpen: open }),
+
+      // Lyrics Panel
+      lyricsPanelShow: false,
+      setLyricsPanelShow: (show) => set({ lyricsPanelShow: show }),
+
+      // Music Playlist
+      musicPlaylist: [],
+      addToMusicPlaylist: (url, hex, duration, lyrics) => set((state) => ({
+        musicPlaylist: [
+          { url, hex, duration, createdAt: Date.now(), lyrics },
+          ...state.musicPlaylist
+        ].slice(0, 50) // Keep only last 50 tracks
+      })),
+      removeFromMusicPlaylist: (createdAt) => set((state) => ({
+        musicPlaylist: state.musicPlaylist.filter((track) => track.createdAt !== createdAt)
+      })),
+      clearMusicPlaylist: () => set({ musicPlaylist: [] }),
+
       // Generated Lyrics
       generatedLyrics: null,
       setGeneratedLyrics: (lyrics) => set({ generatedLyrics: lyrics }),
+
+      // Pending Lyrics to apply to music generator
+      pendingLyricsToApply: null,
+      setPendingLyricsToApply: (lyrics) => set({ pendingLyricsToApply: lyrics }),
 
       // Generated Lyrics Meta
       generatedLyricsTitle: null,
@@ -176,6 +297,7 @@ export const useAppStore = create<AppState>()(
         mode: state.mode,
         isDark: state.isDark,
         style: state.style,
+        musicPlaylist: state.musicPlaylist,
       }),
     }
   )

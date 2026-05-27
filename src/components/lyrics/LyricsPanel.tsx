@@ -79,9 +79,12 @@ export function LyricsPanel() {
   }, [generateLyrics, localPrompt, localLyrics, localTitle, lyricsMode])
 
   const handleApplyToMusic = useCallback(() => {
+    if (generatedLyrics) {
+      useAppStore.getState().setPendingLyricsToApply(generatedLyrics)
+    }
     useAppStore.getState().setMode('music')
     useAppStore.getState().setLyricsPanelOpen(false)
-  }, [])
+  }, [generatedLyrics])
 
   const handleSwitchToMusic = useCallback(() => {
     useAppStore.getState().setMode('music')

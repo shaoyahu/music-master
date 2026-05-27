@@ -30,7 +30,9 @@ function App() {
     : style === 'nature' ? 'from-green-50 via-emerald-50 to-teal-50'
     : 'from-slate-800 via-slate-900 to-slate-800'
 
-  const audioUrl = useAppStore((state) => state.audioUrl)
+  const audioResultPanelOpen = useAppStore((state) => state.audioResultPanelOpen)
+  const setAudioResultPanelOpen = useAppStore((state) => state.setAudioResultPanelOpen)
+  const musicPlaylist = useAppStore((state) => state.musicPlaylist)
 
   const headerBg = isDark ? 'rgba(30,30,30,0.95)' : 'rgba(255,255,255,0.95)'
   const sidebarBg = isDark ? 'rgba(30,30,30,0.95)' : 'rgba(255,255,255,0.95)'
@@ -321,6 +323,29 @@ function App() {
           <span style={{ fontSize: '24px' }}>🎤</span>
           <span style={{ fontSize: '11px', fontWeight: 600 }}>歌词</span>
         </button>
+        <button
+          onClick={() => setAudioResultPanelOpen(!audioResultPanelOpen)}
+          style={{
+            width: '64px',
+            height: '64px',
+            borderRadius: '16px',
+            border: `2px solid ${audioResultPanelOpen && musicPlaylist.length > 0 ? colors.sidebarActive : 'transparent'}`,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '4px',
+            cursor: 'pointer',
+            transition: 'all 0.2s',
+            backgroundColor: audioResultPanelOpen && musicPlaylist.length > 0 ? colors.sidebarActive : isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)',
+            color: audioResultPanelOpen && musicPlaylist.length > 0 ? '#fff' : isDark ? '#aaa' : '#666',
+            boxShadow: audioResultPanelOpen && musicPlaylist.length > 0 ? `0 4px 12px ${colors.sidebarActive}40` : 'none',
+            marginTop: 'auto',
+          }}
+        >
+          <span style={{ fontSize: '24px' }}>📻</span>
+          <span style={{ fontSize: '11px', fontWeight: 600 }}>播放器</span>
+        </button>
       </nav>
 
       {/* Main Content Area */}
@@ -383,8 +408,8 @@ function App() {
         </div>
       </main>
 
-      {/* Floating Audio Player */}
-      {audioUrl && <AudioResultPanel />}
+      {/* Floating Audio Player - always rendered */}
+      <AudioResultPanel />
     </div>
   )
 }
