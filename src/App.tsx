@@ -64,12 +64,12 @@ function App() {
         <>
           <MobileHeader colors={colors} isDark={isDark} />
 
-          <main className="pt-14 pb-20 h-screen overflow-auto">
+          <main className="pt-14 pb-20 h-screen overflow-auto px-4">
             {mobileTab === 'music' && <MusicGenerator />}
             {mobileTab === 'cover' && <CoverProcessor />}
             {mobileTab === 'player' && <MobilePlayerPage />}
             {mobileTab === 'lyrics' && (
-              <div className="p-4">
+              <div className="py-4">
                 <div className="text-center py-12" style={{ color: isDark ? '#888' : '#999' }}>
                   歌词功能
                 </div>
