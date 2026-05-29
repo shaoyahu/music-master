@@ -8,7 +8,6 @@ import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { X, Key, Eye, EyeOff } from 'lucide-react'
 import { MobileTabBar } from '@/components/layout/MobileTabBar'
-import { MobileHeader } from '@/components/layout/MobileHeader'
 import { MobilePlayerPage } from '@/components/layout/MobilePlayerPage'
 import { MobileLyricsDrawer } from '@/components/layout/MobileLyricsDrawer'
 import { MePage } from '@/components/layout/MePage'
@@ -62,8 +61,6 @@ function App() {
       {isMobile ? (
         /* MOBILE LAYOUT */
         <>
-          <MobileHeader colors={colors} isDark={isDark} />
-
           <main className="pt-14 pb-20 h-screen overflow-auto px-4">
             {mobileTab === 'music' && <MusicGenerator />}
             {mobileTab === 'cover' && <CoverProcessor />}
