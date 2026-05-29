@@ -2,6 +2,8 @@ import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
 import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
+import { Button as AnimalButton } from 'animal-island-ui'
+import { useIsAnimalStyle } from './StyleWrapper'
 
 const buttonVariants = cva(
   "inline-flex items-center justify-center whitespace-nowrap rounded-xl text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warm-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
@@ -38,8 +40,40 @@ export interface ButtonProps
   asChild?: boolean
 }
 
+const variantMap: Record<string, string> = {
+  default: 'primary',
+  secondary: 'default',
+  outline: 'default',
+  ghost: 'text',
+  link: 'link',
+}
+
+const sizeMap: Record<string, string> = {
+  default: 'middle',
+  sm: 'small',
+  lg: 'large',
+  icon: 'small',
+}
+
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
+    const isAnimal = useIsAnimalStyle()
+
+    if (isAnimal) {
+      const btnType = (variant && variantMap[variant]) as 'primary' | 'default' | 'dashed' | 'text' | 'link' | undefined
+      const btnSize = (size && sizeMap[size]) as 'small' | 'middle' | 'large' | undefined
+      const { type: nativeType, ...rest } = props
+      void nativeType
+      return (
+        <AnimalButton
+          type={btnType || 'primary'}
+          size={btnSize || 'middle'}
+          className={className}
+          {...rest}
+        />
+      )
+    }
+
     const Comp = asChild ? Slot : "button"
     return (
       <Comp
@@ -52,4 +86,4 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 )
 Button.displayName = "Button"
 
-export { Button, buttonVariants }
+export { Button }

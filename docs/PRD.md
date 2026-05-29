@@ -244,7 +244,7 @@
 **请求参数：**
 ```typescript
 {
-  mode: 'text_to_lyrics' | 'audio_to_lyrics';
+  mode: 'write_full_song' | 'edit';
   prompt?: string;
   lyrics?: string;
   title?: string;

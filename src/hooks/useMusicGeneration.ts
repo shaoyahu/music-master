@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { generateMusic, MusicGenerationParams, MusicGenerationResponse } from '../lib/api';
+import { generateMusic, getApiErrorMessage, MusicGenerationParams, MusicGenerationResponse } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
 
 export interface UseMusicGenerationReturn {
@@ -84,7 +84,6 @@ export function useMusicGeneration(): UseMusicGenerationReturn {
         audioHex,
         response.extra_info?.music_duration || null
       );
-      console.log('[useMusicGeneration] setAudioResult called', { audioUrl, hasHex: !!audioHex });
 
       // Add to playlist and auto open the audio result panel when music is generated
       useAppStore.getState().addToMusicPlaylist(audioUrl, audioHex, response.extra_info?.music_duration || null, params.lyrics || null);
@@ -92,7 +91,7 @@ export function useMusicGeneration(): UseMusicGenerationReturn {
 
       return audioUrl;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Music generation failed';
+      const errorMessage = getApiErrorMessage(err, 'Music generation failed');
       setError(errorMessage);
       throw err;
     } finally {

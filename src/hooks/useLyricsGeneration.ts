@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { generateLyrics, LyricsGenerationResponse } from '../lib/api';
+import { generateLyrics, getApiErrorMessage, LyricsGenerationResponse } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
 
 export type LyricsMode = 'write_full_song' | 'edit';
@@ -58,7 +58,7 @@ export function useLyricsGeneration(): UseLyricsGenerationReturn {
       
       return generatedLyricsText;
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Lyrics generation failed';
+      const errorMessage = getApiErrorMessage(err, 'Lyrics generation failed');
       setError(errorMessage);
       throw err;
     } finally {

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type Mode = 'music' | 'lyrics' | 'cover'
-export type Style = 'warm' | 'nature' | 'cyberpunk' | 'blue' | 'cartoon' | 'minimal' | 'retro' | 'dark' | 'pink'
+export type Style = 'warm' | 'nature' | 'cyberpunk' | 'blue' | 'cartoon' | 'minimal' | 'retro' | 'dark' | 'pink' | 'animal'
 
 // Style color palettes
 export const styleColors = {
@@ -123,6 +123,19 @@ export const styleColors = {
     labelDark: '#ccc',
     sidebarActive: '#86efac',
   },
+  animal: {
+    accent: '#19c8b9',
+    accentGradient: 'linear-gradient(135deg, #19c8b9, #3dd4c6)',
+    cardBg: 'linear-gradient(135deg, #f8f8f0, #f0e8d8)',
+    cardBgDark: 'linear-gradient(135deg, rgba(60,55,50,0.95), rgba(50,45,40,0.95))',
+    inputBg: 'rgba(247,243,223,0.9)',
+    inputBgDark: 'rgba(60,55,50,0.8)',
+    border: '#c4b89e',
+    borderDark: '#5a5550',
+    label: '#794f27',
+    labelDark: '#f0e8d8',
+    sidebarActive: '#19c8b9',
+  },
 } as const
 
 interface AppState {
@@ -169,6 +182,7 @@ interface AppState {
   addToMusicPlaylist: (url: string, hex: string | null, duration: number | null, lyrics?: string | null) => void
   removeFromMusicPlaylist: (createdAt: number) => void
   clearMusicPlaylist: () => void
+  cleanupBlobUrl: (url: string | null) => void
 
   // Generated Lyrics
   generatedLyrics: string | null
@@ -206,7 +220,7 @@ export const useAppStore = create<AppState>()(
       // Theme
       isDark: false,
       setIsDark: (isDark) => {
-        document.body.style.backgroundColor = isDark ? '#1a1a1a' : '#fef7f0'
+        document.body.style.backgroundColor = isDark ? '#1a1a1a' : '#f8f8f0'
         document.body.style.color = isDark ? '#eee' : '#333'
         document.body.style.transition = 'all 0.3s ease'
         set({ isDark })
@@ -248,17 +262,24 @@ export const useAppStore = create<AppState>()(
       setLyricsPanelShow: (show) => set({ lyricsPanelShow: show }),
 
       // Music Playlist
+      // Note: hex is not persisted as it can be very large and exceed localStorage quota
       musicPlaylist: [],
-      addToMusicPlaylist: (url, hex, duration, lyrics) => set((state) => ({
-        musicPlaylist: [
-          { url, hex, duration, createdAt: Date.now(), lyrics },
-          ...state.musicPlaylist
-        ].slice(0, 50) // Keep only last 50 tracks
-      })),
+      addToMusicPlaylist: (url, _hex, duration, lyrics) => set((state) => {
+        // Don't persist large hex strings - only keep URL and metadata
+        const playlistItem = { url, hex: null, duration, createdAt: Date.now(), lyrics }
+        return {
+          musicPlaylist: [playlistItem, ...state.musicPlaylist].slice(0, 50)
+        }
+      }),
       removeFromMusicPlaylist: (createdAt) => set((state) => ({
         musicPlaylist: state.musicPlaylist.filter((track) => track.createdAt !== createdAt)
       })),
       clearMusicPlaylist: () => set({ musicPlaylist: [] }),
+      cleanupBlobUrl: (url) => {
+        if (url?.startsWith('blob:')) {
+          URL.revokeObjectURL(url)
+        }
+      },
 
       // Generated Lyrics
       generatedLyrics: null,
@@ -293,12 +314,22 @@ export const useAppStore = create<AppState>()(
     {
       name: 'music-master-storage',
       partialize: (state) => ({
-        apiKey: state.apiKey,
         mode: state.mode,
         isDark: state.isDark,
         style: state.style,
         musicPlaylist: state.musicPlaylist,
       }),
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<AppState>
+        return {
+          ...currentState,
+          mode: persisted.mode ?? currentState.mode,
+          isDark: persisted.isDark ?? currentState.isDark,
+          style: persisted.style ?? currentState.style,
+          musicPlaylist: persisted.musicPlaylist ?? currentState.musicPlaylist,
+          apiKey: '',
+        }
+      },
     }
   )
 )

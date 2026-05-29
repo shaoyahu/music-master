@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { generateMusic, MusicGenerationParams } from '../lib/api';
+import { generateMusic, getApiErrorMessage, MusicGenerationParams } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
 
 export interface UseCoverGenerationReturn {
@@ -44,12 +44,16 @@ export function useCoverGeneration(): UseCoverGenerationReturn {
 
       const response = await generateMusic(apiKey, params);
 
+      if (response.base_resp && response.base_resp.status_code !== 0) {
+        throw new Error(response.base_resp.status_msg || 'Cover generation failed');
+      }
+
       // status: 1 = processing, 2 = completed
       if (response.data?.status === 1) {
         throw new Error('音乐生成还在处理中，请稍后再试');
       }
 
-      const audioUrl = response.data?.audio || null;
+      const audioUrl = response.data?.audio || response.data?.audio_url || null;
       const audioHex = null;
       const duration = response.extra_info?.music_duration || null;
 
@@ -58,8 +62,12 @@ export function useCoverGeneration(): UseCoverGenerationReturn {
       }
 
       setAudioResult(audioUrl, audioHex, duration);
+      if (audioUrl) {
+        useAppStore.getState().addToMusicPlaylist(audioUrl, audioHex, duration, coverLyrics || null);
+      }
+      useAppStore.getState().setAudioResultPanelOpen(true);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Cover generation failed';
+      const errorMessage = getApiErrorMessage(err, 'Cover generation failed');
       setError(errorMessage);
       throw err;
     } finally {

@@ -1,4 +1,4 @@
-import { Music, Mic2, Upload, Radio } from 'lucide-react'
+import { Music2, FileMusic, Repeat, Disc3 } from 'lucide-react'
 import { clsx } from 'clsx'
 
 type Mode = 'music' | 'lyrics' | 'cover'
@@ -15,6 +15,7 @@ interface NavButton {
   id: Mode
   label: string
   icon: React.ReactNode
+  activeIcon: React.ReactNode
   onClick: () => void
 }
 
@@ -23,19 +24,22 @@ export function Sidebar({ mode, onModeChange, onLyricsPanelOpen, onPlayerToggle,
     {
       id: 'music',
       label: '音乐生成',
-      icon: <Music className="w-5 h-5" />,
+      icon: <Music2 className="w-5 h-5" />,
+      activeIcon: <Music2 className="w-5 h-5" />,
       onClick: () => onModeChange('music'),
     },
     {
       id: 'lyrics',
       label: '歌词生成',
-      icon: <Mic2 className="w-5 h-5" />,
+      icon: <FileMusic className="w-5 h-5" />,
+      activeIcon: <FileMusic className="w-5 h-5" />,
       onClick: onLyricsPanelOpen,
     },
     {
       id: 'cover',
       label: '翻唱处理',
-      icon: <Upload className="w-5 h-5" />,
+      icon: <Repeat className="w-5 h-5" />,
+      activeIcon: <Repeat className="w-5 h-5" />,
       onClick: () => onModeChange('cover'),
     },
   ]
@@ -81,7 +85,7 @@ export function Sidebar({ mode, onModeChange, onLyricsPanelOpen, onPlayerToggle,
               : 'text-warm-700 hover:bg-warm-100'
           )}
         >
-          <Radio className={clsx('w-5 h-5', isPlayerActive ? 'text-white' : 'text-warm-500')} />
+          <Disc3 className={clsx('w-5 h-5', isPlayerActive ? 'text-white' : 'text-warm-500')} />
           <span className="font-medium">播放器</span>
         </button>
       </div>

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
-import { X, Key } from 'lucide-react'
+import { X, Key, Disc3 } from 'lucide-react'
 import { clsx } from 'clsx'
 
 interface HeaderProps {
@@ -28,9 +28,9 @@ export function Header({ apiKey, onApiKeyChange }: HeaderProps) {
     <header className="h-16 bg-white/60 backdrop-blur-sm border-b border-warm-200 flex items-center justify-between px-6">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-xl bg-warm-500 flex items-center justify-center">
-          <span className="text-white text-lg font-bold">M</span>
+          <Disc3 className="w-6 h-6 text-white" />
         </div>
-        <h1 className="text-xl font-semibold text-warm-900">音乐生成器</h1>
+        <h1 className="text-xl font-semibold text-warm-900">Music Master</h1>
       </div>
 
       <Dialog.Root open={open} onOpenChange={handleOpenChange}>

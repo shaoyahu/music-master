@@ -1,13 +1,13 @@
+import { useRef } from 'react'
 import { Palette, Check } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
 
-export type Style = 'warm' | 'nature' | 'cyberpunk' | 'blue' | 'cartoon' | 'minimal' | 'retro' | 'dark' | 'pink'
+export type Style = 'warm' | 'nature' | 'cyberpunk' | 'blue' | 'cartoon' | 'minimal' | 'retro' | 'dark' | 'pink' | 'animal'
 
 interface StyleSelectorProps {
   value: Style
@@ -72,9 +72,17 @@ const styles = [
     description: '清新淡绿色，舒适护眼',
     colors: ['#f5fffe', '#e6f9f0', '#c3f5db', '#86efac'],
   },
+  {
+    id: 'animal' as Style,
+    name: '动物森友会',
+    description: '温馨可爱，童趣盎然',
+    colors: ['#f8f8f0', '#f0e8d8', '#c4b89e', '#19c8b9'],
+  },
 ]
 
 export function StyleSelector({ value, onChange, isDark = false, borderColor = '#e5e5e5', labelColor = '#666' }: StyleSelectorProps) {
+  const scrollRef = useRef<HTMLDivElement>(null)
+
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -96,11 +104,32 @@ export function StyleSelector({ value, onChange, isDark = false, borderColor = '
           <Palette className="h-5 w-5" style={{ color: labelColor }} />
         </button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>选择风格</DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-4 py-4">
+      <DialogContent
+        className="sm:max-w-md"
+        style={{ padding: 0, overflow: 'hidden' }}
+      >
+        {/* Fixed Header */}
+        <div style={{
+          padding: '20px 24px 16px',
+          borderBottom: `1px solid ${isDark ? '#333' : '#e5e5e5'}`,
+          flexShrink: 0,
+        }}>
+          <DialogTitle style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: isDark ? '#eee' : '#333' }}>
+            选择风格
+          </DialogTitle>
+        </div>
+
+        {/* Scrollable List */}
+        <div
+          ref={scrollRef}
+          className="grid gap-2"
+          style={{
+            padding: '12px 16px',
+            maxHeight: 'calc(70vh - 70px)',
+            overflowY: 'auto',
+            overscrollBehavior: 'contain',
+          }}
+        >
           {styles.map((style) => (
             <button
               key={style.id}
@@ -108,37 +137,47 @@ export function StyleSelector({ value, onChange, isDark = false, borderColor = '
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '16px',
-                padding: '16px',
-                borderRadius: '14px',
+                gap: '12px',
+                padding: '10px 12px',
+                borderRadius: '10px',
                 border: `2px solid ${value === style.id ? style.colors[3] : '#e5e5e5'}`,
                 backgroundColor: value === style.id ? `${style.colors[3]}15` : 'transparent',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
                 textAlign: 'left',
-                boxShadow: value === style.id ? `0 4px 12px ${style.colors[3]}30` : 'none',
+                boxShadow: value === style.id ? `0 2px 8px ${style.colors[3]}25` : 'none',
               }}
             >
               {/* Color Preview */}
-              <div style={{ display: 'flex', borderRadius: '8px', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', borderRadius: '6px', overflow: 'hidden', flexShrink: 0 }}>
                 {style.colors.map((color, i) => (
                   <div
                     key={i}
-                    style={{ width: '32px', height: '40px', backgroundColor: color }}
+                    style={{ width: '20px', height: '28px', backgroundColor: color }}
                   />
                 ))}
               </div>
 
               {/* Text */}
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, color: isDark ? '#eee' : '#333' }}>{style.name}</div>
-                <div style={{ fontSize: '13px', color: isDark ? '#888' : '#666', marginTop: '2px' }}>{style.description}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, fontSize: '14px', color: isDark ? '#eee' : '#333' }}>{style.name}</div>
+                <div style={{ fontSize: '12px', color: isDark ? '#888' : '#666', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{style.description}</div>
               </div>
 
               {/* Selected Indicator */}
               {value === style.id && (
-                <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: style.colors[3], display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff' }}>
-                  <Check className="h-4 w-4" />
+                <div style={{
+                  width: '26px',
+                  height: '26px',
+                  borderRadius: '50%',
+                  backgroundColor: style.colors[3],
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#fff',
+                  flexShrink: 0,
+                }}>
+                  <Check className="h-3.5 w-3.5" />
                 </div>
               )}
             </button>

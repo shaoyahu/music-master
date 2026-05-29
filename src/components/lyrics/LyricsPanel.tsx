@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react'
-import { X, Music, Loader2, Copy, Check, Sparkles, Shuffle, Edit3 } from 'lucide-react'
+import { useState, useCallback, useRef, useEffect } from 'react'
+import { X, Music, Loader2, Copy, Check, Sparkles, Shuffle, Edit3, ChevronDown, Zap } from 'lucide-react'
 import { useLyricsGeneration } from '@/hooks/useLyricsGeneration'
 import { useAppStore, styleColors } from '@/stores/appStore'
 
@@ -14,10 +14,37 @@ const STYLE_TEMPLATES = [
 ]
 
 function HighlightedLyrics({ lyrics, accentColor }: { lyrics: string; accentColor: string }) {
-  const highlighted = lyrics.replace(
-    /\[(Intro|Verse|Pre-Chorus|Chorus|Hook|Bridge|Solo|Outro|Break|Interlude|Drop|Build-up|Instrumental|Breakdown|Transition|Post Chorus|Build Up|Post Chorus|Pre Chorus)\]/g,
-    `<span style="color: ${accentColor}; font-weight: 600; background: ${accentColor}20; padding: 2px 6px; border-radius: 4px;">[$1]</span>`
-  )
+  const tagPattern = /\[(Intro|Verse|Pre-Chorus|Chorus|Hook|Bridge|Solo|Outro|Break|Interlude|Drop|Build-up|Instrumental|Breakdown|Transition|Post Chorus|Build Up|Pre Chorus)\]/g
+  const parts: React.ReactNode[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = tagPattern.exec(lyrics)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(lyrics.slice(lastIndex, match.index))
+    }
+
+    parts.push(
+      <span
+        key={`${match[0]}-${match.index}`}
+        style={{
+          color: accentColor,
+          fontWeight: 600,
+          background: `${accentColor}20`,
+          padding: '2px 6px',
+          borderRadius: '4px',
+        }}
+      >
+        {match[0]}
+      </span>
+    )
+
+    lastIndex = match.index + match[0].length
+  }
+
+  if (lastIndex < lyrics.length) {
+    parts.push(lyrics.slice(lastIndex))
+  }
 
   return (
     <pre
@@ -29,12 +56,13 @@ function HighlightedLyrics({ lyrics, accentColor }: { lyrics: string; accentColo
         fontFamily: 'inherit',
         margin: 0,
       }}
-      dangerouslySetInnerHTML={{ __html: highlighted }}
-    />
+    >
+      {parts}
+    </pre>
   )
 }
 
-export function LyricsPanel() {
+export function LyricsPanel({ lyricsPanelOpenOverride, isMobile }: { lyricsPanelOpenOverride?: boolean; isMobile?: boolean }) {
   const {
     lyricsPanelOpen,
     generatedLyrics,
@@ -44,6 +72,8 @@ export function LyricsPanel() {
     generatedLyricsTitle,
     generatedLyricsStyleTags,
   } = useAppStore()
+
+  const isOpen = lyricsPanelOpenOverride || lyricsPanelOpen
 
   const colors = styleColors[style]
   const cardBg = isDark ? colors.cardBgDark : colors.cardBg
@@ -58,6 +88,8 @@ export function LyricsPanel() {
   const [localLyrics, setLocalLyrics] = useState('')
   const [lyricsMode, setLyricsMode] = useState<'write_full_song' | 'edit'>('write_full_song')
   const [copied, setCopied] = useState(false)
+  const [showTemplateDropdown, setShowTemplateDropdown] = useState(false)
+  const templateDropdownRef = useRef<HTMLDivElement>(null)
 
   const handleClose = useCallback(() => {
     useAppStore.getState().setLyricsPanelOpen(false)
@@ -100,16 +132,32 @@ export function LyricsPanel() {
 
   const handleTemplateClick = useCallback((prompt: string) => {
     setLocalPrompt(prompt)
+    setShowTemplateDropdown(false)
   }, [])
 
-  if (!lyricsPanelOpen) {
+  // Close template dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (templateDropdownRef.current && !templateDropdownRef.current.contains(event.target as Node)) {
+        setShowTemplateDropdown(false)
+      }
+    }
+    if (showTemplateDropdown) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showTemplateDropdown])
+
+  if (!isOpen) {
     return null
   }
 
   return (
     <div
-      className="rounded-2xl p-6 shadow-lg border h-full flex flex-col"
-      style={{
+      className={isMobile ? 'space-y-4' : `rounded-2xl p-6 shadow-lg border h-full flex flex-col`}
+      style={isMobile ? {} : {
         background: cardBg,
         borderColor: borderColor,
       }}
@@ -125,32 +173,34 @@ export function LyricsPanel() {
           </div>
           <div>
             <h2 className="text-lg font-semibold" style={{ color: labelColor }}>歌词生成</h2>
-            <p className="text-xs" style={{ color: isDark ? '#888' : '#b45309' }}>
+            <p className="text-xs" style={{ color: labelColor, opacity: 0.7 }}>
               AI 帮你创作独特歌词
             </p>
           </div>
         </div>
-        <button
-          onClick={handleClose}
-          style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '50%',
-            border: 'none',
-            backgroundColor: inputBg,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '16px',
-          }}
-        >
-          <X className="h-4 w-4" style={{ color: labelColor }} />
-        </button>
+        {!isMobile && (
+          <button
+            onClick={handleClose}
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              border: 'none',
+              backgroundColor: inputBg,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '16px',
+            }}
+          >
+            <X className="h-4 w-4" style={{ color: labelColor }} />
+          </button>
+        )}
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto space-y-5">
+      <div className={`${isMobile ? '' : 'flex-1 overflow-y-auto'} space-y-5`}>
         {/* Mode Selection */}
         <div className="space-y-2">
           <label style={{ color: labelColor, fontWeight: 500 }}>生成模式</label>
@@ -192,7 +242,7 @@ export function LyricsPanel() {
               编辑/续写
             </button>
           </div>
-          <p className="text-xs" style={{ color: isDark ? '#666' : '#b45309' }}>
+          <p className="text-xs" style={{ color: labelColor, opacity: 0.6 }}>
             {lyricsMode === 'write_full_song'
               ? '从零开始创作一首完整的歌曲'
               : '在已有歌词基础上进行修改或续写'}
@@ -202,7 +252,7 @@ export function LyricsPanel() {
         {/* Title Input */}
         <div className="space-y-2">
           <label style={{ color: labelColor, fontWeight: 500 }}>
-            歌曲标题 <span style={{ color: isDark ? '#666' : '#b45309', fontWeight: 400 }}>(可选)</span>
+            歌曲标题 <span style={{ color: labelColor, opacity: 0.6, fontWeight: 400 }}>(可选)</span>
           </label>
           <input
             type="text"
@@ -224,65 +274,130 @@ export function LyricsPanel() {
         </div>
 
         {/* Prompt Input */}
-        <div className="space-y-2">
-          <label style={{ color: labelColor, fontWeight: 500 }}>
-            描述 {lyricsMode === 'write_full_song' ? '' : '(可选)'}
-          </label>
-          <input
-            type="text"
-            placeholder={lyricsMode === 'write_full_song'
-              ? "描述歌曲的主题、风格或情感，如：关于夏天的甜蜜情歌..."
-              : "描述你想要什么样的修改或续写方向..."}
-            value={localPrompt}
-            onChange={(e) => setLocalPrompt(e.target.value)}
-            style={{
-              width: '100%',
-              height: '48px',
-              borderRadius: '12px',
-              padding: '0 16px',
-              fontSize: '14px',
-              backgroundColor: inputBg,
-              border: `2px solid ${borderColor}`,
-              color: isDark ? '#eee' : '#333',
-              outline: 'none',
-            }}
-          />
-          {lyricsMode === 'write_full_song' && !localPrompt && (
-            <p className="text-xs flex items-center gap-1" style={{ color: isDark ? '#666' : '#b45309' }}>
-              <Shuffle className="h-3 w-3" />
-              留空将随机生成歌词
-            </p>
-          )}
-        </div>
-
-        {/* Style Templates */}
         {lyricsMode === 'write_full_song' && (
           <div className="space-y-2">
-            <label style={{ color: labelColor, fontWeight: 500, fontSize: '14px' }}>
-              快速模板
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {STYLE_TEMPLATES.map((template) => (
+            <div className="flex items-center justify-between">
+              <label style={{ color: labelColor, fontWeight: 500 }}>
+                描述
+              </label>
+              <div className="relative" ref={templateDropdownRef}>
                 <button
-                  key={template.label}
-                  onClick={() => handleTemplateClick(template.prompt)}
+                  onClick={() => setShowTemplateDropdown(!showTemplateDropdown)}
                   style={{
-                    padding: '8px 14px',
-                    borderRadius: '20px',
-                    border: `2px solid ${borderColor}`,
-                    backgroundColor: isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    border: `1px solid ${borderColor}`,
+                    backgroundColor: isDark ? 'rgba(60,60,60,0.4)' : 'rgba(255,255,255,0.6)',
                     color: labelColor,
                     fontSize: '12px',
                     fontWeight: 500,
                     cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
                   }}
                 >
-                  {template.label}
+                  <Zap className="h-3 w-3" />
+                  快速模板
+                  <ChevronDown className="h-3 w-3" style={{ transform: showTemplateDropdown ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
                 </button>
-              ))}
+                {showTemplateDropdown && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: '4px',
+                      backgroundColor: isDark ? '#2a2a2a' : '#fff',
+                      border: `1px solid ${borderColor}`,
+                      borderRadius: '12px',
+                      padding: '8px',
+                      minWidth: '200px',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
+                      zIndex: 50,
+                    }}
+                  >
+                    <div className="flex flex-col gap-1">
+                      {STYLE_TEMPLATES.map((template) => (
+                        <button
+                          key={template.label}
+                          onClick={() => handleTemplateClick(template.prompt)}
+                          style={{
+                            padding: '8px 12px',
+                            borderRadius: '8px',
+                            border: 'none',
+                            backgroundColor: 'transparent',
+                            color: labelColor,
+                            fontSize: '13px',
+                            fontWeight: 500,
+                            cursor: 'pointer',
+                            textAlign: 'left',
+                            transition: 'background-color 0.2s',
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = isDark ? 'rgba(60,60,60,0.5)' : 'rgba(0,0,0,0.05)'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent'
+                          }}
+                        >
+                          {template.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
+            <input
+              type="text"
+              placeholder="描述歌曲的主题、风格或情感，如：关于夏天的甜蜜情歌..."
+              value={localPrompt}
+              onChange={(e) => setLocalPrompt(e.target.value)}
+              style={{
+                width: '100%',
+                height: '48px',
+                borderRadius: '12px',
+                padding: '0 16px',
+                fontSize: '14px',
+                backgroundColor: inputBg,
+                border: `2px solid ${borderColor}`,
+                color: isDark ? '#eee' : '#333',
+                outline: 'none',
+              }}
+            />
+            {!localPrompt && (
+              <p className="text-xs flex items-center gap-1" style={{ color: labelColor, opacity: 0.6 }}>
+                <Shuffle className="h-3 w-3" />
+                留空将随机生成歌词
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Prompt Input for edit mode */}
+        {lyricsMode === 'edit' && (
+          <div className="space-y-2">
+            <label style={{ color: labelColor, fontWeight: 500 }}>
+              描述 (可选)
+            </label>
+            <input
+              type="text"
+              placeholder="描述你想要什么样的修改或续写方向..."
+              value={localPrompt}
+              onChange={(e) => setLocalPrompt(e.target.value)}
+              style={{
+                width: '100%',
+                height: '48px',
+                borderRadius: '12px',
+                padding: '0 16px',
+                fontSize: '14px',
+                backgroundColor: inputBg,
+                border: `2px solid ${borderColor}`,
+                color: isDark ? '#eee' : '#333',
+                outline: 'none',
+              }}
+            />
           </div>
         )}
 
@@ -290,7 +405,7 @@ export function LyricsPanel() {
         {lyricsMode === 'edit' && (
           <div className="space-y-2">
             <label style={{ color: labelColor, fontWeight: 500 }}>
-              已有歌词 <span style={{ color: isDark ? '#666' : '#b45309', fontWeight: 400 }}>(必填)</span>
+              已有歌词 <span style={{ color: labelColor, opacity: 0.6, fontWeight: 400 }}>(必填)</span>
             </label>
             <textarea
               placeholder="粘贴或输入你想要修改的歌词..."
@@ -364,12 +479,69 @@ export function LyricsPanel() {
         {/* Generated Lyrics */}
         {generatedLyrics && (
           <div className="space-y-3">
-            {/* Generated Title */}
-            {generatedLyricsTitle && (
-              <div className="flex items-center gap-2">
+            {/* Generated Title Row */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              {/* Title */}
+              {generatedLyricsTitle && (
                 <span style={{ color: labelColor, fontWeight: 500 }}>🎵 {generatedLyricsTitle}</span>
+              )}
+              {/* Action Buttons */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCopyLyrics}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    backgroundColor: copied ? colors.accent : (isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)'),
+                    color: copied ? '#fff' : labelColor,
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s',
+                  }}
+                >
+                  {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {copied ? '已复制' : '复制歌词'}
+                </button>
+                <button
+                  onClick={handleApplyToMusic}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '8px',
+                    backgroundColor: colors.accent,
+                    color: '#fff',
+                    border: 'none',
+                    fontSize: '12px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    boxShadow: `0 2px 8px ${colors.accent}40`,
+                  }}
+                >
+                  应用到音乐生成
+                </button>
+                {mode !== 'music' && (
+                  <button
+                    onClick={handleSwitchToMusic}
+                    style={{
+                      padding: '6px 12px',
+                      borderRadius: '8px',
+                      backgroundColor: 'transparent',
+                      color: colors.accent,
+                      fontSize: '12px',
+                      border: `2px solid ${colors.accent}`,
+                      cursor: 'pointer',
+                      fontWeight: 600,
+                    }}
+                  >
+                    切换到音乐生成
+                  </button>
+                )}
               </div>
-            )}
+            </div>
 
             {/* Style Tags */}
             {generatedLyricsStyleTags && (
@@ -403,79 +575,6 @@ export function LyricsPanel() {
               }}
             >
               <HighlightedLyrics lyrics={generatedLyrics} accentColor={colors.accent} />
-            </div>
-
-            {/* Copy Button */}
-            <button
-              onClick={handleCopyLyrics}
-              style={{
-                width: '100%',
-                padding: '10px',
-                borderRadius: '10px',
-                border: 'none',
-                backgroundColor: copied ? colors.accent : (isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)'),
-                color: copied ? '#fff' : labelColor,
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px',
-                transition: 'all 0.2s',
-                boxShadow: copied ? `0 4px 12px ${colors.accent}40` : 'none',
-              }}
-            >
-              {copied ? (
-                <>
-                  <Check className="h-4 w-4" />
-                  已复制到剪贴板
-                </>
-              ) : (
-                <>
-                  <Copy className="h-4 w-4" />
-                  复制歌词
-                </>
-              )}
-            </button>
-
-            {/* Action Buttons */}
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={handleApplyToMusic}
-                style={{
-                  width: '100%',
-                  height: '44px',
-                  borderRadius: '12px',
-                  backgroundColor: colors.accent,
-                  color: '#fff',
-                  border: 'none',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  boxShadow: `0 4px 12px ${colors.accent}40`,
-                }}
-              >
-                应用到音乐生成
-              </button>
-              {mode !== 'music' && (
-                <button
-                  onClick={handleSwitchToMusic}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    borderRadius: '12px',
-                    backgroundColor: 'transparent',
-                    color: colors.accent,
-                    fontSize: '14px',
-                    border: `2px solid ${colors.accent}`,
-                    cursor: 'pointer',
-                    fontWeight: 600,
-                  }}
-                >
-                  切换到音乐生成
-                </button>
-              )}
             </div>
           </div>
         )}

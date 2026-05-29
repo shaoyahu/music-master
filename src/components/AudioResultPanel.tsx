@@ -3,7 +3,7 @@ import { Play, Pause, Download, ExternalLink, List, Music2, ChevronLeft, AlignLe
 import { useAppStore, styleColors } from '@/stores/appStore'
 
 export function AudioResultPanel() {
-  const { audioUrl, audioResultPanelOpen, setAudioResultPanelOpen, lyricsPanelShow, setLyricsPanelShow, isDark, style, musicPlaylist, removeFromMusicPlaylist } = useAppStore()
+  const { audioUrl, audioResultPanelOpen, setAudioResultPanelOpen, lyricsPanelShow, setLyricsPanelShow, isDark, style, musicPlaylist, removeFromMusicPlaylist, cleanupBlobUrl } = useAppStore()
   const colors = styleColors[style]
   const labelColor = isDark ? colors.labelDark : colors.label
 
@@ -13,20 +13,30 @@ export function AudioResultPanel() {
   const [currentIndex, setCurrentIndex] = useState(0)
 
   // Get current audio from playlist or current audioUrl
-  const currentTrack = musicPlaylist[currentIndex] || (audioUrl ? { url: audioUrl, hex: null, duration: null, createdAt: Date.now() } : null)
+  const fallbackTrack = audioUrl ? { url: audioUrl, hex: null, duration: null, createdAt: 0 } : null
+  const currentTrack = musicPlaylist[currentIndex] || fallbackTrack
 
   // Sync expanded state with audioResultPanelOpen
   useEffect(() => {
-    console.log('[AudioResultPanel] audioResultPanelOpen changed:', audioResultPanelOpen)
     setIsExpanded(audioResultPanelOpen)
     if (!audioResultPanelOpen) {
       setLyricsPanelShow(false)
     }
   }, [audioResultPanelOpen, setLyricsPanelShow])
 
+  // Filter out invalid tracks on mount (hex tracks become invalid after page refresh)
   useEffect(() => {
-    console.log('[AudioResultPanel] playlist changed:', musicPlaylist.length)
-  }, [musicPlaylist])
+    const hasInvalidTracks = musicPlaylist.some(track => track.hex === null && track.url.startsWith('blob:'))
+    if (hasInvalidTracks) {
+      // Remove tracks that were hex-encoded (they have null hex and blob: URL which is invalid after refresh)
+      musicPlaylist.forEach(track => {
+        if (track.hex === null && track.url.startsWith('blob:')) {
+          cleanupBlobUrl(track.url)
+          removeFromMusicPlaylist(track.createdAt)
+        }
+      })
+    }
+  }, [cleanupBlobUrl, musicPlaylist, removeFromMusicPlaylist])
 
   const audioId = 'floating-audio'
 
@@ -57,7 +67,9 @@ export function AudioResultPanel() {
 
   const handleDeleteTrack = useCallback((e: React.MouseEvent, createdAt: number) => {
     e.stopPropagation()
+    const trackToDelete = musicPlaylist.find((track) => track.createdAt === createdAt)
     const indexToDelete = musicPlaylist.findIndex((track) => track.createdAt === createdAt)
+    cleanupBlobUrl(trackToDelete?.url || null)
     removeFromMusicPlaylist(createdAt)
     // If we deleted the current track, adjust currentIndex
     if (indexToDelete === currentIndex) {
@@ -69,7 +81,7 @@ export function AudioResultPanel() {
     } else if (indexToDelete < currentIndex) {
       setCurrentIndex(currentIndex - 1)
     }
-  }, [currentIndex, musicPlaylist.length, removeFromMusicPlaylist])
+  }, [cleanupBlobUrl, currentIndex, musicPlaylist, removeFromMusicPlaylist])
 
   const handleClose = useCallback(() => {
     setIsExpanded(false)
@@ -77,13 +89,24 @@ export function AudioResultPanel() {
     setLyricsPanelShow(false)
   }, [setAudioResultPanelOpen, setLyricsPanelShow])
 
+  useEffect(() => {
+    if (currentIndex >= musicPlaylist.length && musicPlaylist.length > 0) {
+      setCurrentIndex(musicPlaylist.length - 1)
+    }
+    if (musicPlaylist.length === 0) {
+      setCurrentIndex(0)
+      setIsPlaying(false)
+      setProgress(0)
+    }
+  }, [currentIndex, musicPlaylist.length])
+
   const handleCloseLyrics = useCallback(() => {
     setLyricsPanelShow(false)
   }, [setLyricsPanelShow])
 
   const handleToggleLyrics = useCallback(() => {
     setLyricsPanelShow(!lyricsPanelShow)
-  }, [lyricsPanelShow])
+  }, [lyricsPanelShow, setLyricsPanelShow])
 
   const handleDownload = useCallback(async () => {
     if (!currentTrack) return

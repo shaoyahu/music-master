@@ -3,6 +3,7 @@ import { Music, Loader2 } from 'lucide-react'
 import { useMusicGeneration } from '@/hooks/useMusicGeneration'
 import { useLyricsGeneration } from '@/hooks/useLyricsGeneration'
 import { useAppStore, styleColors } from '@/stores/appStore'
+import { useResponsive } from '@/hooks/useResponsive'
 import {
   Select,
   SelectContent,
@@ -23,17 +24,17 @@ const formatOptions: { value: AudioFormat; label: string }[] = [
 ]
 
 const sampleRateOptions: { value: SampleRate; label: string }[] = [
-  { value: 16000, label: '16000 Hz' },
-  { value: 24000, label: '24000 Hz' },
-  { value: 32000, label: '32000 Hz' },
   { value: 44100, label: '44100 Hz' },
+  { value: 32000, label: '32000 Hz' },
+  { value: 24000, label: '24000 Hz' },
+  { value: 16000, label: '16000 Hz' },
 ]
 
 const bitrateOptions: { value: Bitrate; label: string }[] = [
-  { value: 32000, label: '32 kbps' },
-  { value: 64000, label: '64 kbps' },
-  { value: 128000, label: '128 kbps' },
   { value: 256000, label: '256 kbps' },
+  { value: 128000, label: '128 kbps' },
+  { value: 64000, label: '64 kbps' },
+  { value: 32000, label: '32 kbps' },
 ]
 
 export function MusicGenerator() {
@@ -50,6 +51,7 @@ export function MusicGenerator() {
 
   const colors = styleColors[style]
   const cardBg = isDark ? colors.cardBgDark : colors.cardBg
+  const { isMobile } = useResponsive()
 
   const { generate: generateMusic, isLoading: isGeneratingMusic, error: musicError } = useMusicGeneration()
   const { isLoading: isGeneratingLyrics } = useLyricsGeneration()
@@ -64,10 +66,20 @@ export function MusicGenerator() {
 
   const handleGenerate = useCallback(async () => {
     try {
-      await generateMusic({
+      const params: {
+        model: string;
+        prompt: string;
+        is_instrumental: boolean;
+        output_format: OutputFormat;
+        audio_setting: {
+          sample_rate: SampleRate;
+          bitrate: Bitrate;
+          format: AudioFormat;
+        };
+        lyrics?: string;
+      } = {
         model: 'music-2.6',
         prompt: localPrompt,
-        lyrics: localIsInstrumental ? '' : localLyrics,
         is_instrumental: localIsInstrumental,
         output_format: localOutputFormat,
         audio_setting: {
@@ -75,7 +87,14 @@ export function MusicGenerator() {
           bitrate: localBitrate,
           format: localFormat,
         },
-      })
+      }
+
+      // Only include lyrics when not instrumental
+      if (!localIsInstrumental && localLyrics) {
+        params.lyrics = localLyrics
+      }
+
+      await generateMusic(params)
     } catch {
       // Error is handled in the hook
     }
@@ -106,8 +125,8 @@ export function MusicGenerator() {
 
   return (
     <div
-      className="rounded-2xl p-6 shadow-lg border flex flex-col"
-      style={{
+      className={`${isMobile ? 'space-y-4' : 'rounded-2xl p-6 shadow-lg border flex flex-col'}`}
+      style={isMobile ? {} : {
         background: cardBg,
         borderColor: borderColor,
         height: '100%',
@@ -124,10 +143,10 @@ export function MusicGenerator() {
           <Music className="h-6 w-6" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold" style={{ color: isDark ? '#eee' : '#92400e' }}>
+          <h2 className="text-2xl font-bold" style={{ color: labelColor }}>
             音乐生成
           </h2>
-          <p className="text-sm" style={{ color: isDark ? '#888' : '#b45309' }}>
+          <p className="text-sm" style={{ color: labelColor, opacity: 0.7 }}>
             输入描述和歌词，AI 将为您生成完整的音乐作品
           </p>
         </div>
@@ -166,7 +185,7 @@ export function MusicGenerator() {
             <label style={{ color: labelColor, fontWeight: 500, cursor: 'pointer' }}>
               无歌词（纯音乐）
             </label>
-            <p className="text-xs mt-1" style={{ color: isDark ? '#666' : '#b45309' }}>
+            <p className="text-xs mt-1" style={{ color: labelColor, opacity: 0.6 }}>
               生成没有人声的背景音乐
             </p>
           </div>
@@ -297,64 +316,94 @@ export function MusicGenerator() {
         >
           <label style={{ color: labelColor, fontWeight: 500 }}>音频设置</label>
 
-          {/* Output Format */}
+          {/* Output Format - Cards style for mobile, Select for desktop */}
           <div className="space-y-2">
             <label style={{ color: labelColor, fontSize: '13px' }}>输出方式</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setLocalOutputFormat('url')}
-                style={{
-                  padding: '10px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  backgroundColor: localOutputFormat === 'url' ? colors.accent : (isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)'),
-                  color: localOutputFormat === 'url' ? '#fff' : labelColor,
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  boxShadow: localOutputFormat === 'url' ? `0 4px 12px ${colors.accent}40` : 'none',
-                }}
-              >
-                🌐 URL 链接
-                <span style={{ display: 'block', fontSize: '11px', fontWeight: 400, marginTop: '2px', opacity: localOutputFormat === 'url' ? 0.9 : 0.7 }}>
-                  可直接播放/下载
-                </span>
-              </button>
-              <button
-                onClick={() => setLocalOutputFormat('hex')}
-                style={{
-                  padding: '10px',
-                  borderRadius: '10px',
-                  border: 'none',
-                  backgroundColor: localOutputFormat === 'hex' ? colors.accent : (isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)'),
-                  color: localOutputFormat === 'hex' ? '#fff' : labelColor,
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all 0.2s',
-                  boxShadow: localOutputFormat === 'hex' ? `0 4px 12px ${colors.accent}40` : 'none',
-                }}
-              >
-                🔢 Hex 编码
-                <span style={{ display: 'block', fontSize: '11px', fontWeight: 400, marginTop: '2px', opacity: localOutputFormat === 'hex' ? 0.9 : 0.7 }}>
-                  适合网页播放
-                </span>
-              </button>
-            </div>
+            {isMobile ? (
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setLocalOutputFormat('url')}
+                  style={{
+                    padding: '10px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    backgroundColor: localOutputFormat === 'url' ? colors.accent : (isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)'),
+                    color: localOutputFormat === 'url' ? '#fff' : labelColor,
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    boxShadow: localOutputFormat === 'url' ? `0 4px 12px ${colors.accent}40` : 'none',
+                  }}
+                >
+                  🌐 URL 链接
+                  <span style={{ display: 'block', fontSize: '11px', fontWeight: 400, marginTop: '2px', opacity: localOutputFormat === 'url' ? 0.9 : 0.7 }}>
+                    可直接播放/下载
+                  </span>
+                </button>
+                <button
+                  onClick={() => setLocalOutputFormat('hex')}
+                  style={{
+                    padding: '10px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    backgroundColor: localOutputFormat === 'hex' ? colors.accent : (isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)'),
+                    color: localOutputFormat === 'hex' ? '#fff' : labelColor,
+                    fontSize: '13px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    boxShadow: localOutputFormat === 'hex' ? `0 4px 12px ${colors.accent}40` : 'none',
+                  }}
+                >
+                  🔢 Hex 编码
+                  <span style={{ display: 'block', fontSize: '11px', fontWeight: 400, marginTop: '2px', opacity: localOutputFormat === 'hex' ? 0.9 : 0.7 }}>
+                    适合网页播放
+                  </span>
+                </button>
+              </div>
+            ) : (
+              <Select value={localOutputFormat} onValueChange={(v) => setLocalOutputFormat(v as OutputFormat)}>
+                <SelectTrigger isDark={isDark} styleType={style} style={{ height: '40px', borderRadius: '10px', fontSize: '13px', fontWeight: 500 }}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent isDark={isDark} styleType={style}>
+                  <SelectItem value="url" isDark={isDark} styleType={style}>🌐 URL 链接（可长久保存）</SelectItem>
+                  <SelectItem value="hex" isDark={isDark} styleType={style}>🔢 Hex 编码（仅当前会话有效）</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            {/* Format */}
-            <div className="space-y-2">
-              <label style={{ color: labelColor, fontSize: '13px', fontWeight: 600 }}>格式</label>
+          {/* Format - Buttons for mobile, Select for desktop */}
+          <div className="space-y-2">
+            <label style={{ color: labelColor, fontSize: '13px', fontWeight: 600 }}>格式</label>
+            {isMobile ? (
+              <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {formatOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setLocalFormat(option.value)}
+                    style={{
+                      flexShrink: 0,
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: localFormat === option.value ? colors.accent : (isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)'),
+                      color: localFormat === option.value ? '#fff' : labelColor,
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
               <Select value={localFormat} onValueChange={(v) => setLocalFormat(v as AudioFormat)}>
-                <SelectTrigger isDark={isDark} styleType={style} style={{
-                  height: '40px',
-                  borderRadius: '10px',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                }}>
+                <SelectTrigger isDark={isDark} styleType={style} style={{ height: '40px', borderRadius: '10px', fontSize: '13px', fontWeight: 500 }}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent isDark={isDark} styleType={style}>
@@ -363,18 +412,38 @@ export function MusicGenerator() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            )}
+          </div>
 
-            {/* Sample Rate */}
-            <div className="space-y-2">
-              <label style={{ color: labelColor, fontSize: '13px', fontWeight: 600 }}>采样率</label>
+          {/* Sample Rate - Buttons for mobile, Select for desktop */}
+          <div className="space-y-2">
+            <label style={{ color: labelColor, fontSize: '13px', fontWeight: 600 }}>采样率</label>
+            {isMobile ? (
+              <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {sampleRateOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setLocalSampleRate(option.value)}
+                    style={{
+                      flexShrink: 0,
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: localSampleRate === option.value ? colors.accent : (isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)'),
+                      color: localSampleRate === option.value ? '#fff' : labelColor,
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
               <Select value={String(localSampleRate)} onValueChange={(v) => setLocalSampleRate(parseInt(v) as SampleRate)}>
-                <SelectTrigger isDark={isDark} styleType={style} style={{
-                  height: '40px',
-                  borderRadius: '10px',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                }}>
+                <SelectTrigger isDark={isDark} styleType={style} style={{ height: '40px', borderRadius: '10px', fontSize: '13px', fontWeight: 500 }}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent isDark={isDark} styleType={style}>
@@ -383,18 +452,38 @@ export function MusicGenerator() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            )}
+          </div>
 
-            {/* Bitrate */}
-            <div className="space-y-2">
-              <label style={{ color: labelColor, fontSize: '13px', fontWeight: 600 }}>比特率</label>
+          {/* Bitrate - Buttons for mobile, Select for desktop */}
+          <div className="space-y-2">
+            <label style={{ color: labelColor, fontSize: '13px', fontWeight: 600 }}>比特率</label>
+            {isMobile ? (
+              <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+                {bitrateOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => setLocalBitrate(option.value)}
+                    style={{
+                      flexShrink: 0,
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      border: 'none',
+                      backgroundColor: localBitrate === option.value ? colors.accent : (isDark ? 'rgba(60,60,60,0.6)' : 'rgba(255,255,255,0.8)'),
+                      color: localBitrate === option.value ? '#fff' : labelColor,
+                      fontSize: '13px',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            ) : (
               <Select value={String(localBitrate)} onValueChange={(v) => setLocalBitrate(parseInt(v) as Bitrate)}>
-                <SelectTrigger isDark={isDark} styleType={style} style={{
-                  height: '40px',
-                  borderRadius: '10px',
-                  fontSize: '13px',
-                  fontWeight: 500,
-                }}>
+                <SelectTrigger isDark={isDark} styleType={style} style={{ height: '40px', borderRadius: '10px', fontSize: '13px', fontWeight: 500 }}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent isDark={isDark} styleType={style}>
@@ -403,7 +492,7 @@ export function MusicGenerator() {
                   ))}
                 </SelectContent>
               </Select>
-            </div>
+            )}
           </div>
         </div>
 

@@ -67,7 +67,7 @@ function App() {
             {mobileTab === 'player' && <MobilePlayerPage />}
             {mobileTab === 'lyrics' && (
               <div className="py-4">
-                <LyricsPanel />
+                <LyricsPanel lyricsPanelOpenOverride={true} isMobile={true} />
               </div>
             )}
             {mobileTab === 'me' && <MePage onApiKeyDialogOpen={() => setApiKeyDialogOpen(true)} />}

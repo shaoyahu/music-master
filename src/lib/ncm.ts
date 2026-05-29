@@ -118,12 +118,51 @@ const CEFN_KEY = new Uint8Array([
   0x38, 0x4B, 0x42, 0x39, 0x35, 0x26, 0x54, 0x64
 ])
 
+const NCM_HEADER_SIZE = 14
+const MAX_KEY_LENGTH = 1024
+
+function assertCanRead(bytes: Uint8Array, offset: number, length: number, label: string): void {
+  if (offset < 0 || length < 0 || offset + length > bytes.length) {
+    throw new Error(`${label} is outside file bounds`)
+  }
+}
+
+function readUint32LE(bytes: Uint8Array, offset: number, label: string): number {
+  assertCanRead(bytes, offset, 4, label)
+  return (
+    bytes[offset] +
+    bytes[offset + 1] * 0x100 +
+    bytes[offset + 2] * 0x10000 +
+    bytes[offset + 3] * 0x1000000
+  )
+}
+
+function validateKeyLength(bytes: Uint8Array, keyLength: number, options: { requireStandardLength?: boolean } = {}): void {
+  if (!Number.isInteger(keyLength) || keyLength <= 0 || keyLength > MAX_KEY_LENGTH) {
+    throw new Error(`Invalid key length: ${keyLength}`)
+  }
+
+  if (keyLength % 16 !== 0) {
+    throw new Error(`Invalid key length: ${keyLength} (must be AES block aligned)`)
+  }
+
+  if (options.requireStandardLength && keyLength !== 128) {
+    throw new Error(`Unexpected key length: ${keyLength} (expected 128 for AES-128)`)
+  }
+
+  assertCanRead(bytes, NCM_HEADER_SIZE, keyLength, 'Encrypted key')
+}
+
 /**
  * Initialize RC4 key box (key schedule)
  * @param keyData - Raw RC4 key bytes
  * @returns 256-byte key box
  */
 function initRC4KeyBox(keyData: Uint8Array): Uint8Array {
+  if (keyData.length === 0) {
+    throw new Error('Invalid RC4 key: empty key data')
+  }
+
   const keyBox = new Uint8Array(256)
   for (let i = 0; i < 256; i++) {
     keyBox[i] = i
@@ -161,13 +200,15 @@ function decryptAudioNCMRC4(audioData: Uint8Array, keyBox: Uint8Array): Uint8Arr
  */
 function decryptAudioStandardRC4(audioData: Uint8Array, keyBox: Uint8Array): Uint8Array {
   const decrypted = new Uint8Array(audioData.length)
+  let iBox = 0
   let j = 0
   for (let i = 0; i < audioData.length; i++) {
-    j = (j + keyBox[i]) & 0xFF
-    const temp = keyBox[i]
-    keyBox[i] = keyBox[j]
+    iBox = (iBox + 1) & 0xFF
+    j = (j + keyBox[iBox]) & 0xFF
+    const temp = keyBox[iBox]
+    keyBox[iBox] = keyBox[j]
     keyBox[j] = temp
-    const idx = (keyBox[i] + keyBox[j]) & 0xFF
+    const idx = (keyBox[iBox] + keyBox[j]) & 0xFF
     decrypted[i] = audioData[i] ^ keyBox[idx]
   }
   return decrypted
@@ -180,9 +221,7 @@ function decryptAudioStandardRC4(audioData: Uint8Array, keyBox: Uint8Array): Uin
  * @returns raw RC4 key (16 bytes)
  */
 function extractRC4Key(bytes: Uint8Array, keyLength: number): Uint8Array {
-  if (keyLength !== 128) {
-    throw new Error(`Unexpected key length: ${keyLength} (expected 128 for AES-128)`)
-  }
+  validateKeyLength(bytes, keyLength, { requireStandardLength: true })
 
   // Extract encrypted key from offset 14, each byte XOR 0x64
   const encryptedKey = new Uint8Array(keyLength)
@@ -207,7 +246,6 @@ function extractRC4Key(bytes: Uint8Array, keyLength: number): Uint8Array {
     throw new Error(`RC4 key extraction failed: got ${rc4Key.length} bytes after prefix`)
   }
 
-  console.log('[NCM] RC4 key extracted:', rc4Key.length, 'bytes, first 16:', Array.from(rc4Key.slice(0, 16)).map(b => b.toString(16).padStart(2, '0')).join(' '))
   return rc4Key
 }
 
@@ -218,41 +256,29 @@ function extractRC4Key(bytes: Uint8Array, keyLength: number): Uint8Array {
  * @returns offset where audio data begins
  */
 function findAudioStart(bytes: Uint8Array, keyLength: number): number {
-  let offset = 14 + keyLength // Skip past key data
+  let offset = NCM_HEADER_SIZE + keyLength // Skip past key data
 
   // Metadata length (4 bytes, little-endian)
-  const metadataLength =
-    bytes[offset] |
-    (bytes[offset + 1] << 8) |
-    (bytes[offset + 2] << 16) |
-    (bytes[offset + 3] << 24)
+  const metadataLength = readUint32LE(bytes, offset, 'Metadata length')
   offset += 4 + metadataLength // Skip metadata length + metadata
 
   // Skip 5 reserved bytes (reference impl uses 5, not 9)
   offset += 5
 
   // Image data space used (4 bytes, LE)
-  const imageSpace =
-    bytes[offset] |
-    (bytes[offset + 1] << 8) |
-    (bytes[offset + 2] << 16) |
-    (bytes[offset + 3] << 24)
+  const imageSpace = readUint32LE(bytes, offset, 'Image data space')
   offset += 4
 
   // Image data actual length (4 bytes, LE)
-  const imageSize =
-    bytes[offset] |
-    (bytes[offset + 1] << 8) |
-    (bytes[offset + 2] << 16) |
-    (bytes[offset + 3] << 24)
+  const imageSize = readUint32LE(bytes, offset, 'Image data size')
   offset += 4
 
   // Skip image data if present (use imageSpace for allocation size)
   if (imageSize > 0 && imageSize <= imageSpace) {
+    assertCanRead(bytes, offset, imageSpace, 'Image data')
     offset += imageSpace
   }
 
-  console.log('[NCM] Audio start offset:', offset, 'imageSize:', imageSize, 'imageSpace:', imageSpace, 'metadataLength:', metadataLength)
   return offset
 }
 
@@ -369,8 +395,6 @@ function normalizeDecodedAudio(data: Uint8Array): DecodedAudio {
   }
 
   const normalized = probe.offset === 0 ? data : data.slice(probe.offset)
-  console.log('[NCM] Normalized decoded audio format:', probe.format, 'offset:', probe.offset, 'size:', normalized.length)
-
   return {
     data: normalized,
     format: probe.format,
@@ -382,17 +406,8 @@ function normalizeDecodedAudio(data: Uint8Array): DecodedAudio {
  */
 function decodeStandardNCM(bytes: Uint8Array): DecodedAudio {
   // Key length at offset 10 (4 bytes, little-endian)
-  const keyLength =
-    bytes[10] |
-    (bytes[11] << 8) |
-    (bytes[12] << 16) |
-    (bytes[13] << 24)
-
-  if (keyLength <= 0 || keyLength > 1024) {
-    throw new Error(`Invalid key length: ${keyLength}`)
-  }
-
-  console.log('[NCM] Key length:', keyLength)
+  const keyLength = readUint32LE(bytes, 10, 'Key length')
+  validateKeyLength(bytes, keyLength, { requireStandardLength: true })
 
   // Extract and decrypt RC4 key
   const rc4Key = extractRC4Key(bytes, keyLength)
@@ -409,7 +424,6 @@ function decodeStandardNCM(bytes: Uint8Array): DecodedAudio {
 
   const audioData = bytes.slice(audioStart)
   const decryptedAudio = decryptAudioNCMRC4(audioData, keyBox)
-  console.log('[NCM] First 20 bytes after decryption:', Array.from(decryptedAudio.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '))
 
   return normalizeDecodedAudio(decryptedAudio)
 }
@@ -450,11 +464,9 @@ function testDecryptConfig(
 }
 
 function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
-  console.log('[NCM] decodeCEFNLike: Starting CEFN decryption')
-
   // Read key_length at offset 10 (4 bytes LE)
-  const keyLength = bytes[10] | (bytes[11] << 8) | (bytes[12] << 16) | (bytes[13] << 24)
-  console.log('[NCM] decodeCEFNLike: keyLength =', keyLength)
+  const keyLength = readUint32LE(bytes, 10, 'Key length')
+  validateKeyLength(bytes, keyLength)
 
   // Extract and AES-decrypt the key data (common to both paths)
   const encryptedKey = new Uint8Array(keyLength)
@@ -463,8 +475,6 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
   }
   const aesEcb = new AES(CORE_KEY)
   const decryptedKey = aesEcb.decrypt(encryptedKey)
-
-  console.log('[NCM] decodeCEFNLike: AES decrypted first 64 bytes:', Array.from(decryptedKey.slice(0, 64)).map(b => b.toString(16).padStart(2, '0')).join(' '))
 
   // Build candidate RC4 key positions from the decrypted data.
   // For standard NCM, the key is at bytes 17-32 (right after the 17-byte prefix).
@@ -483,7 +493,6 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
     const keys: Uint8Array[] = []
 
     if (prefixOffset >= 0) {
-      console.log('[NCM] decodeCEFNLike: Found neteasecloudmusic prefix at', prefixOffset)
       // The reference implementation uses ALL bytes after the 17-byte prefix
       // (after PKCS7 unpadding) as the RC4 key, NOT just 16 bytes.
       // For keyLength=128: ~110 bytes after prefix
@@ -491,7 +500,6 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
       const unpaddedKey = pkcs7Unpad(decryptedKey)
       const fullRc4Key = unpaddedKey.slice(prefixOffset + 17)
       if (fullRc4Key.length > 0) {
-        console.log('[NCM] decodeCEFNLike: Full RC4 key length:', fullRc4Key.length, 'bytes')
         keys.push(fullRc4Key)
         // Also try the traditional 16-byte subset as fallback
         if (fullRc4Key.length >= 16) {
@@ -513,11 +521,12 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
   }
 
   const candidateKeys = buildCandidateKeys()
-  console.log('[NCM] decodeCEFNLike: Trying', candidateKeys.length, 'candidate RC4 keys')
+  if (candidateKeys.length === 0) {
+    return decodeCEFNLikeXOR(bytes)
+  }
 
   // Compute the structural audio start from file layout (works for all key lengths)
   const structAudioStart = findCEFNAudioStart(bytes, keyLength)
-  console.log('[NCM] decodeCEFNLike: Structural audio start =', structAudioStart)
 
   // Build the set of test positions: structural position + hardcoded + scan positions
   const testPositions = new Set<number>([structAudioStart])
@@ -535,7 +544,6 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
 
   // Try every combination of (key, position, variant) and pick the best
   let bestScore = 0
-  let bestKey: Uint8Array | null = null
   let bestKeyBox: Uint8Array | null = null
   let bestPos = -1
   let bestVariant: 'ncm' | 'std' = 'ncm'
@@ -551,7 +559,6 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
         const score = testDecryptConfig(bytes, keyBox, pos, variant, testLen)
         if (score > bestScore) {
           bestScore = score
-          bestKey = candidateKey
           bestKeyBox = keyBox
           bestPos = pos
           bestVariant = variant
@@ -560,13 +567,11 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
     }
   }
 
-  console.log('[NCM] decodeCEFNLike: Best config - pos:', bestPos, 'score:', bestScore, 'variant:', bestVariant, 'keyLen:', bestKey?.length)
-
   // Also perform a fine-grained scan around the structural position for larger files
-  const scanResult = scanForAudioData(bytes, bestKeyBox || initRC4KeyBox(candidateKeys[0]))
-  if (scanResult.offset !== -1 && scanResult.offset !== bestPos) {
-    const scanScore = testDecryptConfig(bytes, bestKeyBox || initRC4KeyBox(candidateKeys[0]), scanResult.offset, scanResult.variant, testLen)
-    console.log('[NCM] decodeCEFNLike: Scan found pos:', scanResult.offset, 'score:', scanScore, 'variant:', scanResult.variant)
+  const scanKeyBox = bestKeyBox || initRC4KeyBox(candidateKeys[0])
+  const scanResult = scanForAudioData(bytes, scanKeyBox)
+  if (scanResult.offset !== -1 && scanResult.offset !== bestPos && bestKeyBox) {
+    const scanScore = testDecryptConfig(bytes, bestKeyBox, scanResult.offset, scanResult.variant, testLen)
     if (scanScore > bestScore) {
       bestScore = scanScore
       bestPos = scanResult.offset
@@ -574,37 +579,18 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
     }
   }
 
-  const minScore = 3000
-  if (bestScore < minScore || bestPos === -1 || !bestKey || !bestKeyBox) {
-    console.log('[NCM] decodeCEFNLike: Best score', bestScore, '<', minScore, 'minimum, falling back to XOR')
-    if (bestKeyBox) {
-      // Last attempt: try decrypting from findCEFNAudioStart with NCM-RC4
-      const lastScore = testDecryptConfig(bytes, bestKeyBox, structAudioStart, 'ncm', 5000)
-      console.log('[NCM] decodeCEFNLike: Last resort structAudioStart score:', lastScore)
-      if (lastScore >= minScore) {
-        bestScore = lastScore
-        bestPos = structAudioStart
-        bestVariant = 'ncm'
-      } else {
-        return decodeCEFNLikeXOR(bytes)
-      }
-    } else {
-      return decodeCEFNLikeXOR(bytes)
-    }
+  if (!bestKeyBox || bestPos < 0) {
+    return decodeCEFNLikeXOR(bytes)
   }
-
-  console.log('[NCM] decodeCEFNLike: Final audio start offset =', bestPos, 'variant =', bestVariant)
 
   const audioData = bytes.slice(bestPos)
   const decryptedAudio = bestVariant === 'std'
     ? decryptAudioStandardRC4(audioData, new Uint8Array(bestKeyBox))
     : decryptAudioNCMRC4(audioData, bestKeyBox)
-  console.log('[NCM] decodeCEFNLike: First 20 bytes:', Array.from(decryptedAudio.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '))
 
   try {
     return normalizeDecodedAudio(decryptedAudio)
-  } catch (error) {
-    console.log('[NCM] decodeCEFNLike: Unrecognized decoded audio, falling back to XOR', error)
+  } catch {
     return decodeCEFNLikeXOR(bytes)
   }
 }
@@ -613,34 +599,29 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
  * Find audio start offset for CEFN format by scanning file
  */
 function findCEFNAudioStart(bytes: Uint8Array, keyLength: number): number {
-  let offset = 14 + keyLength
+  let offset = NCM_HEADER_SIZE + keyLength
 
   // Metadata length (4 bytes, LE)
-  const metadataLength = bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)
-  console.log('[NCM] findCEFNAudioStart: metadataLength at', offset, '=', metadataLength)
+  const metadataLength = readUint32LE(bytes, offset, 'Metadata length')
   offset += 4 + metadataLength
 
   // Skip 5 reserved bytes (reference impl uses 5, not 9)
-  console.log('[NCM] findCEFNAudioStart: after metadata, offset =', offset)
   offset += 5
 
   // Image data space used (4 bytes, LE) — allocates space for cover art
-  const imageSpace = bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)
-  console.log('[NCM] findCEFNAudioStart: imageSpace at', offset, '=', imageSpace)
+  const imageSpace = readUint32LE(bytes, offset, 'Image data space')
   offset += 4
 
   // Image data actual length (4 bytes, LE)
-  const imageSize = bytes[offset] | (bytes[offset + 1] << 8) | (bytes[offset + 2] << 16) | (bytes[offset + 3] << 24)
-  console.log('[NCM] findCEFNAudioStart: imageSize at', offset, '=', imageSize)
+  const imageSize = readUint32LE(bytes, offset, 'Image data size')
   offset += 4
 
   if (imageSize > 0 && imageSize <= imageSpace) {
     // Skip image data + any padding to fill image_space
+    assertCanRead(bytes, offset, imageSpace, 'Image data')
     offset += imageSpace
-    console.log('[NCM] findCEFNAudioStart: skipping image + padding, size =', imageSpace)
   }
 
-  console.log('[NCM] findCEFNAudioStart: final offset =', offset)
   return offset
 }
 
@@ -648,8 +629,6 @@ function findCEFNAudioStart(bytes: Uint8Array, keyLength: number): number {
  * Scan for valid audio data using fine-grained search around known positions
  */
 function scanForAudioData(bytes: Uint8Array, keyBox: Uint8Array): { offset: number; format: string; variant: 'ncm' | 'std' } {
-  console.log('[NCM] scanForAudioData: Starting fine-grained scan...')
-
   let bestOffset = -1
   let bestScore = 0
   let format = 'unknown'
@@ -683,19 +662,16 @@ function scanForAudioData(bytes: Uint8Array, keyBox: Uint8Array): { offset: numb
         bestOffset = pos
         format = probeNCM.format.toUpperCase()
         bestVariant = 'ncm'
-        console.log('[NCM] scanForAudioData: New best NCM-RC4 at', pos, 'format:', probeNCM.format, 'score:', scoreNCM, 'offset:', probeNCM.offset)
       }
       if (scoreStd > bestScore) {
         bestScore = scoreStd
         bestOffset = pos
         format = probeStd.format.toUpperCase()
         bestVariant = 'std'
-        console.log('[NCM] scanForAudioData: New best Std-RC4 at', pos, 'format:', probeStd.format, 'score:', scoreStd, 'offset:', probeStd.offset)
       }
     }
   }
 
-  console.log('[NCM] scanForAudioData: Best offset:', bestOffset, 'score:', bestScore, 'format:', format, 'variant:', bestVariant)
   return { offset: bestOffset, format, variant: bestVariant }
 }
 
@@ -703,7 +679,6 @@ function scanForAudioData(bytes: Uint8Array, keyBox: Uint8Array): { offset: numb
  * Fallback XOR-based CEFN decryption
  */
 function decodeCEFNLikeXOR(bytes: Uint8Array): DecodedAudio {
-  console.log('[NCM] decodeCEFNLikeXOR: Starting')
   const possibleStarts = [10, 128, 256, 512, 1024, 2048, 4096, 8192, 9476, 10240, 16384]
 
   let audioStart = -1
@@ -717,7 +692,6 @@ function decodeCEFNLikeXOR(bytes: Uint8Array): DecodedAudio {
       const decryptedPair = new Uint8Array([d0, d1, bytes[i + 2] ^ CEFN_KEY[(i + 2) % 16], bytes[i + 3] ^ CEFN_KEY[(i + 3) % 16]])
       if (detectAudioFormatAtOffset(decryptedPair) !== 'unknown' || isValidMP3Frame(d0, d1)) {
         audioStart = i
-        console.log('[NCM] decodeCEFNLikeXOR: Found at', i)
         break
       }
     }
@@ -733,7 +707,6 @@ function decodeCEFNLikeXOR(bytes: Uint8Array): DecodedAudio {
         if (detectAudioFormatAtOffset(decryptedPair) !== 'unknown' || isValidMP3Frame(d0, d1)) {
           audioStart = i
           bestKeyOffset = offset
-          console.log('[NCM] decodeCEFNLikeXOR: Found at', i, 'with offset', offset)
           break
         }
       }
@@ -765,6 +738,10 @@ function decodeCEFNLikeXOR(bytes: Uint8Array): DecodedAudio {
 function decodeNCM(arrayBuffer: ArrayBuffer): DecodedAudio {
   const bytes = new Uint8Array(arrayBuffer)
 
+  if (bytes.length < NCM_HEADER_SIZE) {
+    throw new Error('Invalid NCM file format - file is too short')
+  }
+
   // Validate header
   const isStandardNCM =
     bytes[0] === 0x63 &&
@@ -776,9 +753,6 @@ function decodeNCM(arrayBuffer: ArrayBuffer): DecodedAudio {
   const isCEFNLike =
     (bytes[0] === 0x43 && bytes[1] === 0x45 && bytes[2] === 0x46) ||
     (bytes[0] === 0x43 && bytes[1] === 0x54 && bytes[2] === 0x45 && bytes[3] === 0x4E && bytes[4] === 0x46)
-
-  console.log('[NCM] Header bytes:', Array.from(bytes.slice(0, 10)).map(b => b.toString(16).padStart(2, '0')).join(' '))
-  console.log('[NCM] isStandardNCM:', isStandardNCM, 'isCEFNLike:', isCEFNLike)
 
   if (!isStandardNCM && !isCEFNLike) {
     throw new Error('Invalid NCM file format - not a valid NCM file')
@@ -792,23 +766,21 @@ function decodeNCM(arrayBuffer: ArrayBuffer): DecodedAudio {
 }
 
 export async function parseNCMFile(file: File): Promise<string> {
-  console.log('[NCM] parseNCMFile called for:', file.name)
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
 
     reader.onload = () => {
       try {
-        console.log('[NCM] File read complete, starting decode')
-        const arrayBuffer = reader.result as ArrayBuffer
+        if (!(reader.result instanceof ArrayBuffer)) {
+          throw new Error('文件读取结果异常')
+        }
+
+        const arrayBuffer = reader.result
         const decodedAudio = decodeNCM(arrayBuffer)
-        console.log('[NCM] Decode complete, format:', decodedAudio.format, 'size:', decodedAudio.data.byteLength)
 
         // Convert to base64
         const bytes = decodedAudio.data
-        console.log('[NCM] Decode output: first 20 bytes:', Array.from(bytes.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' '))
-        console.log('[NCM] Decode output: last 20 bytes:', Array.from(bytes.slice(-20)).map(b => b.toString(16).padStart(2, '0')).join(' '))
         const base64 = bytesToBase64(bytes)
-        console.log('[NCM] base64 length:', base64.length, 'first 20 chars:', base64.substring(0, 20), 'last 20 chars:', base64.substring(base64.length - 20))
         resolve(base64)
       } catch (error) {
         reject(
@@ -842,8 +814,17 @@ export async function fileToBase64WithNCMSupport(
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => {
-      const result = reader.result as string
-      const base64 = result.split(',')[1]
+      if (typeof reader.result !== 'string') {
+        reject(new Error('文件读取结果异常'))
+        return
+      }
+
+      const base64 = reader.result.split(',')[1]
+      if (!base64) {
+        reject(new Error('文件转码失败'))
+        return
+      }
+
       resolve({ base64, isNCM: false })
     }
     reader.onerror = () => reject(new Error('文件读取失败'))

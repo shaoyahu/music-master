@@ -3,6 +3,7 @@ import { Upload, Link as LinkIcon, Music, Loader2 } from 'lucide-react'
 import { useCoverPreprocess } from '@/hooks/useCoverPreprocess'
 import { useCoverGeneration } from '@/hooks/useCoverGeneration'
 import { useAppStore, styleColors } from '@/stores/appStore'
+import { useResponsive } from '@/hooks/useResponsive'
 import { fileToBase64WithNCMSupport } from '@/lib/ncm'
 
 export function CoverProcessor() {
@@ -16,6 +17,7 @@ export function CoverProcessor() {
 
   const colors = styleColors[style]
   const cardBg = isDark ? colors.cardBgDark : colors.cardBg
+  const { isMobile } = useResponsive()
 
   const { preprocess, isLoading: isProcessingCoverLoading, error: coverError } = useCoverPreprocess()
   const { generateCover, isLoading: isGeneratingCover, error: generateError } = useCoverGeneration()
@@ -37,16 +39,13 @@ export function CoverProcessor() {
       const file = e.target.files?.[0]
       if (file) {
         setFileError(null)
-        console.log('[CoverProcessor] File selected:', file.name, 'size:', file.size)
         try {
           const result = await fileToBase64WithNCMSupport(file)
-          const { base64, isNCM } = result
+          const { base64 } = result
 
-          console.log('[CoverProcessor] File converted, isNCM:', isNCM, 'base64 length:', base64.length)
           await preprocess(undefined, base64)
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : '文件处理失败'
-          console.error('[CoverProcessor] Error:', errorMessage)
           setFileError(errorMessage)
         }
       }
@@ -80,8 +79,8 @@ export function CoverProcessor() {
 
   return (
     <div
-      className="rounded-2xl p-6 shadow-lg border"
-      style={{
+      className={`${isMobile ? 'space-y-4' : 'rounded-2xl p-6 shadow-lg border'}`}
+      style={isMobile ? {} : {
         background: cardBg,
         borderColor: borderColor,
         height: '100%',
@@ -101,7 +100,7 @@ export function CoverProcessor() {
           <h2 className="text-2xl font-bold" style={{ color: labelColor }}>
             翻唱处理
           </h2>
-          <p className="text-sm" style={{ color: isDark ? '#888' : '#b45309' }}>
+          <p className="text-sm" style={{ color: labelColor, opacity: 0.7 }}>
             上传或输入音频 URL，将现有歌曲转换为新的翻唱版本
           </p>
         </div>
@@ -140,14 +139,14 @@ export function CoverProcessor() {
           >
             <Upload className="h-8 w-8" style={{ color: accentColor }} />
             <span style={{ color: labelColor, fontSize: '14px' }}>点击上传音频文件</span>
-            <span style={{ color: isDark ? '#666' : '#b45309', fontSize: '12px' }}>支持 MP3、WAV、FLAC，时长 6 秒 - 6 分钟</span>
+            <span style={{ color: labelColor, opacity: 0.6, fontSize: '12px' }}>支持 MP3、WAV、FLAC，时长 6 秒 - 6 分钟</span>
           </button>
         </div>
 
         {/* OR Divider */}
         <div className="flex items-center gap-4">
           <div style={{ flex: 1, height: '1px', backgroundColor: borderColor }} />
-          <span style={{ color: isDark ? '#666' : '#b45309', fontSize: '13px' }}>或者</span>
+          <span style={{ color: labelColor, opacity: 0.6, fontSize: '13px' }}>或者</span>
           <div style={{ flex: 1, height: '1px', backgroundColor: borderColor }} />
         </div>
 
@@ -272,7 +271,7 @@ export function CoverProcessor() {
             <p style={{ color: labelColor, fontSize: '13px' }}>
               <span style={{ fontWeight: 600 }}>✓ 预处理完成</span>
             </p>
-            <p className="text-xs mt-1" style={{ color: isDark ? '#666' : '#b45309' }}>
+            <p className="text-xs mt-1" style={{ color: labelColor, opacity: 0.6 }}>
               Feature ID: {coverFeatureId}
             </p>
           </div>
@@ -316,7 +315,7 @@ export function CoverProcessor() {
           >
             <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3" style={{ color: accentColor }} />
             <p style={{ color: labelColor }}>正在处理音频...</p>
-            <p className="text-xs mt-1" style={{ color: isDark ? '#666' : '#b45309' }}>这可能需要几秒钟</p>
+            <p className="text-xs mt-1" style={{ color: labelColor, opacity: 0.6 }}>这可能需要几秒钟</p>
           </div>
         )}
 

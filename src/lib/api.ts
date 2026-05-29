@@ -1,4 +1,5 @@
 const API_BASE = 'https://api.minimaxi.com';
+const REQUEST_TIMEOUT_MS = 300000; // 5 minutes for music generation
 
 export interface MusicGenerationParams {
   model?: string;
@@ -71,18 +72,117 @@ export interface ApiError {
   trace_id?: string;
 }
 
-function parseResponse<T>(response: Response): Promise<T> {
-  return response.json().then((data) => {
-    if (!response.ok) {
-      const error: ApiError = {
+export function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (
+    typeof error === 'object' &&
+    error !== null &&
+    'status_text' in error &&
+    typeof (error as { status_text?: unknown }).status_text === 'string'
+  ) {
+    return (error as { status_text: string }).status_text;
+  }
+
+  return fallback;
+}
+
+interface ResponseErrorBody {
+  status_text?: string;
+  status_msg?: string;
+  message?: string;
+  trace_id?: string;
+  base_resp?: {
+    status_msg?: string;
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function readErrorBody(data: unknown): ResponseErrorBody {
+  if (!isRecord(data)) {
+    return {};
+  }
+
+  const baseResp = isRecord(data.base_resp) ? data.base_resp : undefined;
+  return {
+    status_text: typeof data.status_text === 'string' ? data.status_text : undefined,
+    status_msg: typeof data.status_msg === 'string' ? data.status_msg : undefined,
+    message: typeof data.message === 'string' ? data.message : undefined,
+    trace_id: typeof data.trace_id === 'string' ? data.trace_id : undefined,
+    base_resp: baseResp
+      ? {
+          status_msg: typeof baseResp.status_msg === 'string' ? baseResp.status_msg : undefined,
+        }
+      : undefined,
+  };
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  let data: unknown = null;
+
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      if (!response.ok) {
+        throw {
+          status: response.status,
+          status_text: text || response.statusText,
+        } as ApiError;
+      }
+
+      throw {
         status: response.status,
-        status_text: data.status_text || response.statusText,
-        trace_id: data.trace_id,
-      };
-      throw error;
+        status_text: 'Invalid JSON response from API',
+      } as ApiError;
     }
-    return data as T;
-  });
+  }
+
+  if (!response.ok) {
+    const errorBody = readErrorBody(data);
+    throw {
+      status: response.status,
+      status_text:
+        errorBody.status_text ||
+        errorBody.status_msg ||
+        errorBody.base_resp?.status_msg ||
+        errorBody.message ||
+        response.statusText ||
+        'Request failed',
+      trace_id: errorBody.trace_id,
+    } as ApiError;
+  }
+
+  return data as T;
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw { status: 408, status_text: 'Request timeout - please try again' } as ApiError;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function generateMusic(
@@ -93,7 +193,7 @@ export async function generateMusic(
     throw { status: 400, status_text: 'API key is required' } as ApiError;
   }
 
-  const response = await fetch(`${API_BASE}/v1/music_generation`, {
+  const response = await fetchWithTimeout(`${API_BASE}/v1/music_generation`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -116,7 +216,12 @@ export async function generateLyrics(
     throw { status: 400, status_text: 'API key is required' } as ApiError;
   }
 
-  const response = await fetch(`${API_BASE}/v1/lyrics_generation`, {
+  // Validate edit mode has lyrics
+  if (mode === 'edit' && !lyrics?.trim()) {
+    throw { status: 400, status_text: 'Lyrics content is required for edit mode' } as ApiError;
+  }
+
+  const response = await fetchWithTimeout(`${API_BASE}/v1/lyrics_generation`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -124,9 +229,9 @@ export async function generateLyrics(
     },
     body: JSON.stringify({
       mode,
-      prompt,
-      lyrics,
-      title,
+      prompt: prompt || undefined,
+      lyrics: lyrics || undefined,
+      title: title || undefined,
     }),
   });
 
@@ -146,7 +251,7 @@ export async function coverPreprocess(
     throw { status: 400, status_text: 'Either audioUrl or audioBase64 is required' } as ApiError;
   }
 
-  const response = await fetch(`${API_BASE}/v1/music_cover_preprocess`, {
+  const response = await fetchWithTimeout(`${API_BASE}/v1/music_cover_preprocess`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

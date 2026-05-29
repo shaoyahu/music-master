@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { coverPreprocess, CoverPreprocessResponse } from '../lib/api';
+import { coverPreprocess, CoverPreprocessResponse, getApiErrorMessage } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
 
 export interface UseCoverPreprocessReturn {
@@ -29,16 +29,12 @@ export function useCoverPreprocess(): UseCoverPreprocessReturn {
     setIsLoading(true);
     setError(null);
 
-    console.log('[useCoverPreprocess] Starting preprocess, audioBase64 length:', audioBase64?.length)
-
     try {
       const response: CoverPreprocessResponse = await coverPreprocess(
         apiKey,
         audioUrl,
         audioBase64
       );
-
-      console.log('[useCoverPreprocess] Response:', response)
 
       if (response.base_resp && response.base_resp.status_code !== 0) {
         throw new Error(response.base_resp.status_msg || 'Cover preprocess failed');
@@ -52,7 +48,7 @@ export function useCoverPreprocess(): UseCoverPreprocessReturn {
       
       return { featureId, lyrics };
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Cover preprocess failed';
+      const errorMessage = getApiErrorMessage(err, 'Cover preprocess failed');
       setError(errorMessage);
       throw err;
     } finally {
