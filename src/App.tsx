@@ -61,7 +61,7 @@ function App() {
       {isMobile ? (
         /* MOBILE LAYOUT */
         <>
-          <main className="pt-14 pb-20 h-screen overflow-auto px-4">
+          <main className="pt-2 pb-20 h-screen overflow-auto px-4">
             {mobileTab === 'music' && <MusicGenerator />}
             {mobileTab === 'cover' && <CoverProcessor />}
             {mobileTab === 'player' && <MobilePlayerPage />}
