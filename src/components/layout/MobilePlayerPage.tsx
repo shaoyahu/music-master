@@ -1,4 +1,4 @@
-import { Play, Pause, SkipBack, SkipForward, Download, List, AlignLeft } from 'lucide-react'
+import { Play, SkipBack, SkipForward, Download, List, AlignLeft } from 'lucide-react'
 import { useAppStore, styleColors } from '@/stores/appStore'
 
 export function MobilePlayerPage() {

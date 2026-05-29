@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { Music, FileMusic, X } from 'lucide-react'
-import { clsx } from 'clsx'
 
 interface MobileLyricsDrawerProps {
   isOpen: boolean

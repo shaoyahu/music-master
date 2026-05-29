@@ -33,7 +33,7 @@ function App() {
   const { isMobile } = useResponsive()
   const [mobileTab, setMobileTab] = useState<'music' | 'cover' | 'player' | 'lyrics' | 'me'>('music')
   const [lyricsDrawerOpen, setLyricsDrawerOpen] = useState(false)
-  const { toast, showToast, hideToast } = useToast()
+  const { toast, hideToast } = useToast()
 
   const colors = styleColors[style]
 
@@ -79,11 +79,15 @@ function App() {
           </main>
 
           <MobileLyricsDrawer
-            open={lyricsDrawerOpen}
+            isOpen={lyricsDrawerOpen}
             onClose={() => setLyricsDrawerOpen(false)}
             colors={colors}
             isDark={isDark}
-          />
+          >
+            <div className="text-center py-8" style={{ color: isDark ? '#888' : '#999' }}>
+              歌词功能
+            </div>
+          </MobileLyricsDrawer>
 
           <MobileTabBar
             activeTab={mobileTab}
