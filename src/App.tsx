@@ -67,9 +67,7 @@ function App() {
             {mobileTab === 'player' && <MobilePlayerPage />}
             {mobileTab === 'lyrics' && (
               <div className="py-4">
-                <div className="text-center py-12" style={{ color: isDark ? '#888' : '#999' }}>
-                  歌词功能
-                </div>
+                <LyricsPanel />
               </div>
             )}
             {mobileTab === 'me' && <MePage onApiKeyDialogOpen={() => setApiKeyDialogOpen(true)} />}
