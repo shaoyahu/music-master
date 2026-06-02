@@ -99,8 +99,15 @@ function mul(a: number, b: number): number {
   return p
 }
 
-function pkcs7Unpad(data: Uint8Array): Uint8Array {
-  return data.slice(0, data.length - data[data.length - 1])
+function safePkcs7Unpad(data: Uint8Array): Uint8Array {
+  // Reject pad values outside the 1..16 range and refuse to strip the
+  // entire buffer. Without these guards, a corrupt or non-PKCS7 trailer
+  // would produce an empty / wrong-sized RC4 key and burn a scoring
+  // cycle for no good reason.
+  if (data.length === 0) return data
+  const pad = data[data.length - 1]
+  if (pad < 1 || pad > 16 || pad > data.length) return data
+  return data.slice(0, data.length - pad)
 }
 
 // =============================================================================
@@ -303,14 +310,25 @@ interface DecodedAudio {
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
+  // Stream-convert: build the binary string in chunks small enough to avoid
+  // the JS engine's argument/argument-spread limit (and to avoid intermediate
+  // giant strings for large NCM files). This is a well-known safe pattern
+  // for binary->base64 in the browser.
+  //
+  // We use a for-loop + manual string concatenation instead of
+  // `String.fromCharCode.apply(null, chunk)` to avoid the `as unknown as
+  // number[]` cast and the apply-spread performance hit. Chunk size 0x8000
+  // (32 KiB) keeps each intermediate string concatenation cheap.
   const chunkSize = 0x8000
   let binary = ''
-
   for (let i = 0; i < bytes.length; i += chunkSize) {
     const chunk = bytes.subarray(i, i + chunkSize)
-    binary += String.fromCharCode(...chunk)
+    let chunkStr = ''
+    for (let j = 0; j < chunk.length; j++) {
+      chunkStr += String.fromCharCode(chunk[j])
+    }
+    binary += chunkStr
   }
-
   return btoa(binary)
 }
 
@@ -497,7 +515,7 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
       // (after PKCS7 unpadding) as the RC4 key, NOT just 16 bytes.
       // For keyLength=128: ~110 bytes after prefix
       // For keyLength=144: ~126 bytes after prefix
-      const unpaddedKey = pkcs7Unpad(decryptedKey)
+      const unpaddedKey = safePkcs7Unpad(decryptedKey)
       const fullRc4Key = unpaddedKey.slice(prefixOffset + 17)
       if (fullRc4Key.length > 0) {
         keys.push(fullRc4Key)
@@ -508,7 +526,7 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
       }
     } else {
       // No prefix found: try raw decrypted data
-      const unpadded = pkcs7Unpad(decryptedKey)
+      const unpadded = safePkcs7Unpad(decryptedKey)
       if (unpadded.length > 0) {
         keys.push(unpadded)
       }
@@ -526,7 +544,7 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
   }
 
   // Compute the structural audio start from file layout (works for all key lengths)
-  const structAudioStart = findCEFNAudioStart(bytes, keyLength)
+  const structAudioStart = findAudioStart(bytes, keyLength)
 
   // Build the set of test positions: structural position + hardcoded + scan positions
   const testPositions = new Set<number>([structAudioStart])
@@ -593,36 +611,6 @@ function decodeCEFNLike(bytes: Uint8Array): DecodedAudio {
   } catch {
     return decodeCEFNLikeXOR(bytes)
   }
-}
-
-/**
- * Find audio start offset for CEFN format by scanning file
- */
-function findCEFNAudioStart(bytes: Uint8Array, keyLength: number): number {
-  let offset = NCM_HEADER_SIZE + keyLength
-
-  // Metadata length (4 bytes, LE)
-  const metadataLength = readUint32LE(bytes, offset, 'Metadata length')
-  offset += 4 + metadataLength
-
-  // Skip 5 reserved bytes (reference impl uses 5, not 9)
-  offset += 5
-
-  // Image data space used (4 bytes, LE) — allocates space for cover art
-  const imageSpace = readUint32LE(bytes, offset, 'Image data space')
-  offset += 4
-
-  // Image data actual length (4 bytes, LE)
-  const imageSize = readUint32LE(bytes, offset, 'Image data size')
-  offset += 4
-
-  if (imageSize > 0 && imageSize <= imageSpace) {
-    // Skip image data + any padding to fill image_space
-    assertCanRead(bytes, offset, imageSpace, 'Image data')
-    offset += imageSpace
-  }
-
-  return offset
 }
 
 /**

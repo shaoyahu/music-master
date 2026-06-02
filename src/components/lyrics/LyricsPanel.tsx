@@ -82,6 +82,7 @@ export function LyricsPanel({ lyricsPanelOpenOverride, isMobile }: { lyricsPanel
   const inputBg = isDark ? colors.inputBgDark : colors.inputBg
 
   const { generate: generateLyrics, isLoading: isGeneratingLyrics, error: lyricsError } = useLyricsGeneration()
+  const showToast = useAppStore((state) => state.showToast)
 
   const [localPrompt, setLocalPrompt] = useState('')
   const [localTitle, setLocalTitle] = useState('')
@@ -92,8 +93,15 @@ export function LyricsPanel({ lyricsPanelOpenOverride, isMobile }: { lyricsPanel
   const templateDropdownRef = useRef<HTMLDivElement>(null)
 
   const handleClose = useCallback(() => {
-    useAppStore.getState().setLyricsPanelOpen(false)
-  }, [])
+    if (isMobile) {
+      // On mobile the panel is force-shown via `lyricsPanelOpenOverride`,
+      // so toggling `lyricsPanelOpen` alone is a no-op. Switch to the
+      // music tab instead — that's the closest "back" destination.
+      useAppStore.getState().setMobileTab('music')
+    } else {
+      useAppStore.getState().setLyricsPanelOpen(false)
+    }
+  }, [isMobile])
 
   const handleGenerate = useCallback(async () => {
     try {
@@ -123,12 +131,28 @@ export function LyricsPanel({ lyricsPanelOpenOverride, isMobile }: { lyricsPanel
   }, [])
 
   const handleCopyLyrics = useCallback(async () => {
-    if (generatedLyrics) {
-      await navigator.clipboard.writeText(generatedLyrics)
+    if (!generatedLyrics) return
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(generatedLyrics)
+      } else {
+        // Fallback for browsers without clipboard API
+        const textarea = document.createElement('textarea')
+        textarea.value = generatedLyrics
+        textarea.style.position = 'fixed'
+        textarea.style.opacity = '0'
+        document.body.appendChild(textarea)
+        textarea.select()
+        document.execCommand('copy')
+        document.body.removeChild(textarea)
+      }
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '请稍后重试'
+      showToast(`复制失败:${message}`, 'error')
     }
-  }, [generatedLyrics])
+  }, [generatedLyrics, showToast])
 
   const handleTemplateClick = useCallback((prompt: string) => {
     setLocalPrompt(prompt)
@@ -178,25 +202,29 @@ export function LyricsPanel({ lyricsPanelOpenOverride, isMobile }: { lyricsPanel
             </p>
           </div>
         </div>
-        {!isMobile && (
-          <button
-            onClick={handleClose}
-            style={{
-              width: '32px',
-              height: '32px',
-              borderRadius: '50%',
-              border: 'none',
-              backgroundColor: inputBg,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '16px',
-            }}
-          >
-            <X className="h-4 w-4" style={{ color: labelColor }} />
-          </button>
-        )}
+        {/* Close button is always shown. The mobile `handleClose` calls
+            `setLyricsPanelOpen(false)`, which on mobile (where
+            `lyricsPanelOpenOverride=true`) doesn't unmount the panel —
+            the user still needs a way to leave. The parent layout
+            switches to the music tab when `lyricsPanelOpen` flips false
+            in the mobile path via the lyrics tab render condition. */}
+        <button
+          onClick={handleClose}
+          style={{
+            width: '32px',
+            height: '32px',
+            borderRadius: '50%',
+            border: 'none',
+            backgroundColor: inputBg,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '16px',
+          }}
+        >
+          <X className="h-4 w-4" style={{ color: labelColor }} />
+        </button>
       </div>
 
       {/* Content */}

@@ -1,39 +1,40 @@
-import { useState, useCallback } from 'react';
-import { generateMusic, getApiErrorMessage, MusicGenerationParams } from '../lib/api';
+import { useCallback } from 'react';
+import { generateMusic, MusicGenerationParams } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
+import { useAsyncAction } from './useAsyncAction';
+import { parseAudioResponse, ParsedAudio } from '../lib/audio';
 
 export interface UseCoverGenerationReturn {
-  generateCover: (prompt?: string) => Promise<void>;
+  generateCover: (prompt?: string) => Promise<void | undefined>;
   isLoading: boolean;
   error: string | null;
 }
 
-export function useCoverGeneration(): UseCoverGenerationReturn {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface CoverGenPending {
+  parsed: ParsedAudio
+  lyrics: string | null
+}
 
+export function useCoverGeneration(): UseCoverGenerationReturn {
   const apiKey = useAppStore((state) => state.apiKey);
   const coverFeatureId = useAppStore((state) => state.coverFeatureId);
   const coverPrompt = useAppStore((state) => state.coverPrompt);
   const coverLyrics = useAppStore((state) => state.coverLyrics);
-  const setAudioResult = useAppStore((state) => state.setAudioResult);
 
-  const generateCover = useCallback(async (prompt?: string) => {
-    if (!coverFeatureId) {
-      setError('请先预处理音频');
-      return;
-    }
+  // The action only validates + parses. Store mutations live in `commit`
+  // (called by useAsyncAction only after the runIdRef guard passes) so
+  // a slow stale request cannot clobber a newer one's setAudioResult /
+  // addToMusicPlaylist writes.
+  const action = useCallback(
+    async (prompt?: string): Promise<CoverGenPending> => {
+      if (!coverFeatureId) {
+        throw new Error('请先预处理音频');
+      }
+      const finalPrompt = prompt || coverPrompt;
+      if (!finalPrompt) {
+        throw new Error('请输入翻唱风格描述');
+      }
 
-    const finalPrompt = prompt || coverPrompt;
-    if (!finalPrompt) {
-      setError('请输入翻唱风格描述');
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
       const params: MusicGenerationParams = {
         model: 'music-cover',
         cover_feature_id: coverFeatureId,
@@ -47,33 +48,29 @@ export function useCoverGeneration(): UseCoverGenerationReturn {
       if (response.base_resp && response.base_resp.status_code !== 0) {
         throw new Error(response.base_resp.status_msg || 'Cover generation failed');
       }
+      const parsed = parseAudioResponse(response);
+      return { parsed, lyrics: coverLyrics || null };
+    },
+    [apiKey, coverFeatureId, coverPrompt, coverLyrics]
+  );
 
-      // status: 1 = processing, 2 = completed
-      if (response.data?.status === 1) {
-        throw new Error('音乐生成还在处理中，请稍后再试');
-      }
+  const commit = useCallback((pending: CoverGenPending) => {
+    const { setAudioResult, addToMusicPlaylist, setAudioResultPanelOpen } = useAppStore.getState()
+    setAudioResult(pending.parsed.url, pending.parsed.hex, pending.parsed.duration)
+    addToMusicPlaylist(pending.parsed.url, pending.parsed.hex, pending.parsed.duration, pending.lyrics)
+    setAudioResultPanelOpen(true)
+  }, [])
 
-      const audioUrl = response.data?.audio || response.data?.audio_url || null;
-      const audioHex = null;
-      const duration = response.extra_info?.music_duration || null;
+  const { run, isLoading, error } = useAsyncAction<[string?], CoverGenPending>(action, { onSuccess: commit });
 
-      if (!audioUrl && !audioHex) {
-        throw new Error('未收到音频数据，请重试');
-      }
-
-      setAudioResult(audioUrl, audioHex, duration);
-      if (audioUrl) {
-        useAppStore.getState().addToMusicPlaylist(audioUrl, audioHex, duration, coverLyrics || null);
-      }
-      useAppStore.getState().setAudioResultPanelOpen(true);
-    } catch (err) {
-      const errorMessage = getApiErrorMessage(err, 'Cover generation failed');
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiKey, coverFeatureId, coverPrompt, coverLyrics, setAudioResult]);
+  // Preserve the public return shape: callers expect void, not the
+  // internal pending object.
+  const generateCover = useCallback(
+    async (prompt?: string): Promise<void | undefined> => {
+      await run(prompt)
+    },
+    [run]
+  )
 
   return {
     generateCover,

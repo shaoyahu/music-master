@@ -1,40 +1,28 @@
-import { useState, useCallback } from 'react';
-import { coverPreprocess, CoverPreprocessResponse, getApiErrorMessage } from '../lib/api';
+import { useCallback } from 'react';
+import { coverPreprocess, CoverPreprocessResponse } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
+import { useAsyncAction } from './useAsyncAction';
+
+export interface CoverPreprocessResult {
+  featureId: string | null
+  lyrics: string | null
+}
 
 export interface UseCoverPreprocessReturn {
-  preprocess: (audioUrl?: string, audioBase64?: string) => Promise<{
-    featureId: string | null;
-    lyrics: string | null;
-  }>;
+  preprocess: (audioUrl?: string, audioBase64?: string) => Promise<CoverPreprocessResult | undefined>;
   isLoading: boolean;
   error: string | null;
 }
 
 export function useCoverPreprocess(): UseCoverPreprocessReturn {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
   const apiKey = useAppStore((state) => state.apiKey);
-  const setCoverFeatureId = useAppStore((state) => state.setCoverFeatureId);
-  const setCoverLyrics = useAppStore((state) => state.setCoverLyrics);
 
-  const preprocess = useCallback(async (
-    audioUrl?: string,
-    audioBase64?: string
-  ): Promise<{
-    featureId: string | null;
-    lyrics: string | null;
-  }> => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      const response: CoverPreprocessResponse = await coverPreprocess(
-        apiKey,
-        audioUrl,
-        audioBase64
-      );
+  // The action only validates the API response. Store mutations live in
+  // `commit` (called by useAsyncAction only after the runIdRef guard passes)
+  // so a slow stale preprocess cannot clobber a newer one's store values.
+  const action = useCallback(
+    async (audioUrl?: string, audioBase64?: string): Promise<CoverPreprocessResult> => {
+      const response: CoverPreprocessResponse = await coverPreprocess(apiKey, audioUrl, audioBase64);
 
       if (response.base_resp && response.base_resp.status_code !== 0) {
         throw new Error(response.base_resp.status_msg || 'Cover preprocess failed');
@@ -42,22 +30,21 @@ export function useCoverPreprocess(): UseCoverPreprocessReturn {
 
       const featureId = response.cover_feature_id || null;
       const lyrics = response.lyrics || response.formatted_lyrics || null;
-      
-      setCoverFeatureId(featureId);
-      setCoverLyrics(lyrics);
-      
       return { featureId, lyrics };
-    } catch (err) {
-      const errorMessage = getApiErrorMessage(err, 'Cover preprocess failed');
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiKey, setCoverFeatureId, setCoverLyrics]);
+    },
+    [apiKey]
+  );
+
+  const commit = useCallback((pending: CoverPreprocessResult) => {
+    const { setCoverFeatureId, setCoverLyrics } = useAppStore.getState();
+    setCoverFeatureId(pending.featureId);
+    setCoverLyrics(pending.lyrics);
+  }, []);
+
+  const { run, isLoading, error } = useAsyncAction<[string?, string?], CoverPreprocessResult>(action, { onSuccess: commit });
 
   return {
-    preprocess,
+    preprocess: run,
     isLoading,
     error,
   };

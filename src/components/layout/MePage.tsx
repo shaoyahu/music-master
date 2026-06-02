@@ -10,7 +10,8 @@ const STYLES: { id: Style; label: string; preview: string }[] = [
   { id: 'minimal', label: '简约', preview: '#404040' },
   { id: 'retro', label: '复古', preview: '#c2410c' },
   { id: 'dark', label: '暗黑', preview: '#71717a' },
-  { id: 'pink', label: '粉色', preview: '#86efac' },
+  { id: 'pink', label: '浅绿清新', preview: '#86efac' },
+  { id: 'animal', label: '动物森友会', preview: '#19c8b9' },
 ]
 
 interface MePageProps {

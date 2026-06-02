@@ -2,7 +2,15 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 export type Mode = 'music' | 'lyrics' | 'cover'
+export type MobileTab = 'music' | 'cover' | 'player' | 'lyrics' | 'me'
 export type Style = 'warm' | 'nature' | 'cyberpunk' | 'blue' | 'cartoon' | 'minimal' | 'retro' | 'dark' | 'pink' | 'animal'
+export type ToastType = 'error' | 'success' | 'info'
+
+export interface ToastMessage {
+  id: string
+  message: string
+  type: ToastType
+}
 
 // Style color palettes
 export const styleColors = {
@@ -155,6 +163,10 @@ interface AppState {
   mode: Mode
   setMode: (mode: Mode) => void
 
+  // Mobile tab (mobile-only; not currently persisted to avoid leaking mobile state to desktop)
+  mobileTab: MobileTab
+  setMobileTab: (tab: MobileTab) => void
+
   // Lyrics Panel
   lyricsPanelOpen: boolean
   setLyricsPanelOpen: (open: boolean) => void
@@ -177,12 +189,26 @@ interface AppState {
   lyricsPanelShow: boolean
   setLyricsPanelShow: (show: boolean) => void
 
-  // Music Playlist - stores generated music history
-  musicPlaylist: Array<{ url: string; hex: string | null; duration: number | null; createdAt: number; lyrics?: string | null }>
+  // Music Playlist - stores generated music history.
+  // `id` (UUID) is the stable React key + removal identifier.
+  // `createdAt` (epoch ms) is for display ("时:分").
+  // `fromPersistedState` (bool) is true for items rehydrated from
+  // localStorage (whose blob URLs are dead), false for items added in
+  // the current session. Used by AudioResultPanel to scrub dead blobs
+  // on mount without accidentally clearing live in-session blobs.
+  // They are separate so a fast duplicate add can't collide on either field.
+  musicPlaylist: Array<{
+    id: string
+    url: string
+    hex: string | null
+    duration: number | null
+    createdAt: number
+    fromPersistedState: boolean
+    lyrics?: string | null
+  }>
   addToMusicPlaylist: (url: string, hex: string | null, duration: number | null, lyrics?: string | null) => void
-  removeFromMusicPlaylist: (createdAt: number) => void
+  removeFromMusicPlaylist: (id: string) => void
   clearMusicPlaylist: () => void
-  cleanupBlobUrl: (url: string | null) => void
 
   // Generated Lyrics
   generatedLyrics: string | null
@@ -209,6 +235,11 @@ interface AppState {
   // Cover Prompt
   coverPrompt: string
   setCoverPrompt: (prompt: string) => void
+
+  // Toast (global notification; not persisted)
+  toast: ToastMessage | null
+  showToast: (message: string, type?: ToastType) => void
+  hideToast: () => void
 
   // Clear audio result
   clearAudioResult: () => void
@@ -238,6 +269,10 @@ export const useAppStore = create<AppState>()(
       mode: 'music',
       setMode: (mode) => set({ mode }),
 
+      // Mobile tab
+      mobileTab: 'music',
+      setMobileTab: (mobileTab) => set({ mobileTab }),
+
       // Lyrics Panel
       lyricsPanelOpen: false,
       setLyricsPanelOpen: (open) => set({ lyricsPanelOpen: open }),
@@ -250,6 +285,10 @@ export const useAppStore = create<AppState>()(
       audioUrl: null,
       audioHex: null,
       musicDuration: null,
+      // Note: blob URL lifecycle is owned by musicPlaylist. The same blob URL
+      // is also stored in playlist entries, so revoking it here would break
+      // playback for older tracks. Revocation happens when the playlist item
+      // is dropped (overflow), removed, or the playlist is cleared.
       setAudioResult: (url, hex, duration) =>
         set({ audioUrl: url, audioHex: hex, musicDuration: duration }),
 
@@ -265,21 +304,43 @@ export const useAppStore = create<AppState>()(
       // Note: hex is not persisted as it can be very large and exceed localStorage quota
       musicPlaylist: [],
       addToMusicPlaylist: (url, _hex, duration, lyrics) => set((state) => {
-        // Don't persist large hex strings - only keep URL and metadata
-        const playlistItem = { url, hex: null, duration, createdAt: Date.now(), lyrics }
+        // `id` (UUID) for stable React key + removal; `createdAt` (ms) for display.
+        // `fromPersistedState: false` marks this as a fresh in-session item
+        // (its blob URL is still valid). The merge function flips this to
+        // true when items are rehydrated from localStorage.
+        const playlistItem = { id: crypto.randomUUID(), url, hex: null, duration, createdAt: Date.now(), fromPersistedState: false, lyrics }
+        const next = [playlistItem, ...state.musicPlaylist]
+        // The overflow item (oldest) is dropped here, so this is the right
+        // place to release its blob URL. Without this, the blob backing
+        // older tracks would leak when the playlist exceeds 50 entries.
+        if (next.length > 50) {
+          const dropped = next[50]
+          if (dropped.url.startsWith('blob:')) {
+            URL.revokeObjectURL(dropped.url)
+          }
+        }
         return {
-          musicPlaylist: [playlistItem, ...state.musicPlaylist].slice(0, 50)
+          musicPlaylist: next.slice(0, 50)
         }
       }),
-      removeFromMusicPlaylist: (createdAt) => set((state) => ({
-        musicPlaylist: state.musicPlaylist.filter((track) => track.createdAt !== createdAt)
-      })),
-      clearMusicPlaylist: () => set({ musicPlaylist: [] }),
-      cleanupBlobUrl: (url) => {
-        if (url?.startsWith('blob:')) {
-          URL.revokeObjectURL(url)
+      removeFromMusicPlaylist: (id) => set((state) => {
+        const removed = state.musicPlaylist.find((track) => track.id === id)
+        if (removed?.url.startsWith('blob:')) {
+          URL.revokeObjectURL(removed.url)
         }
-      },
+        return {
+          musicPlaylist: state.musicPlaylist.filter((track) => track.id !== id)
+        }
+      }),
+      clearMusicPlaylist: () => set((state) => {
+        // Release every blob URL before clearing the playlist.
+        state.musicPlaylist.forEach((track) => {
+          if (track.url.startsWith('blob:')) {
+            URL.revokeObjectURL(track.url)
+          }
+        })
+        return { musicPlaylist: [] }
+      }),
 
       // Generated Lyrics
       generatedLyrics: null,
@@ -307,7 +368,17 @@ export const useAppStore = create<AppState>()(
       coverPrompt: '',
       setCoverPrompt: (prompt) => set({ coverPrompt: prompt }),
 
-      // Clear audio result
+      // Toast — global notification state. Not persisted: a toast that
+      // survives a reload would feel like a phantom message.
+      toast: null,
+      showToast: (message, type = 'error') =>
+        set({ toast: { id: crypto.randomUUID(), message, type } }),
+      hideToast: () => set({ toast: null }),
+
+      // Clear audio result.
+      // We intentionally do NOT revoke the blob URL here: the same URL lives
+      // in musicPlaylist. Revoking it would invalidate the playlist entry and
+      // break playback for that track. See setAudioResult for context.
       clearAudioResult: () =>
         set({ audioUrl: null, audioHex: null, musicDuration: null }),
     }),
@@ -321,13 +392,29 @@ export const useAppStore = create<AppState>()(
       }),
       merge: (persistedState, currentState) => {
         const persisted = persistedState as Partial<AppState>
+        // Backfill `id` + `createdAt` on legacy playlist items persisted
+        // before the id/createdAt split. `id` is required for removal /
+        // React keys; a missing `createdAt` would render as "Invalid Date"
+        // in the playlist's time-of-day label.
+        // `fromPersistedState: true` is set for every rehydrated item so
+        // AudioResultPanel can tell "this blob URL was loaded from
+        // localStorage and is dead" apart from "this blob URL was created
+        // in the current session and is still live".
+        const migratedPlaylist = (persisted.musicPlaylist ?? currentState.musicPlaylist).map(
+          (track) => ({
+            ...track,
+            id: track.id ?? crypto.randomUUID(),
+            createdAt: track.createdAt ?? Date.now(),
+            fromPersistedState: true,
+          })
+        )
         return {
           ...currentState,
           mode: persisted.mode ?? currentState.mode,
           isDark: persisted.isDark ?? currentState.isDark,
           style: persisted.style ?? currentState.style,
-          musicPlaylist: persisted.musicPlaylist ?? currentState.musicPlaylist,
-          apiKey: '',
+          musicPlaylist: migratedPlaylist,
+          // apiKey is intentionally session-only: see `partialize` above.
         }
       },
     }

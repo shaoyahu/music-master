@@ -44,3 +44,7 @@ tsconfig.tsbuildinfo
 
 # Micro cache
 .cache/
+
+# Playwright test session cache & numbered test screenshots in repo root
+.playwright-mcp/
+/[0-9][0-9]-*.png

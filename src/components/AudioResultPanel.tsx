@@ -1,9 +1,22 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { Play, Pause, Download, ExternalLink, List, Music2, ChevronLeft, AlignLeft, X, Trash2 } from 'lucide-react'
 import { useAppStore, styleColors } from '@/stores/appStore'
+import { downloadAudioBlob } from '@/lib/audio'
 
 export function AudioResultPanel() {
-  const { audioUrl, audioResultPanelOpen, setAudioResultPanelOpen, lyricsPanelShow, setLyricsPanelShow, isDark, style, musicPlaylist, removeFromMusicPlaylist, cleanupBlobUrl } = useAppStore()
+  // Use per-field selectors so unrelated store changes (e.g. toast,
+  // apiKeyDialogOpen) don't re-render the panel. Setters from zustand
+  // are referentially stable, so this doesn't add re-render churn.
+  const audioUrl = useAppStore((state) => state.audioUrl)
+  const audioResultPanelOpen = useAppStore((state) => state.audioResultPanelOpen)
+  const setAudioResultPanelOpen = useAppStore((state) => state.setAudioResultPanelOpen)
+  const lyricsPanelShow = useAppStore((state) => state.lyricsPanelShow)
+  const setLyricsPanelShow = useAppStore((state) => state.setLyricsPanelShow)
+  const isDark = useAppStore((state) => state.isDark)
+  const style = useAppStore((state) => state.style)
+  const musicPlaylist = useAppStore((state) => state.musicPlaylist)
+  const removeFromMusicPlaylist = useAppStore((state) => state.removeFromMusicPlaylist)
+  const showToast = useAppStore((state) => state.showToast)
   const colors = styleColors[style]
   const labelColor = isDark ? colors.labelDark : colors.label
 
@@ -11,9 +24,20 @@ export function AudioResultPanel() {
   const [progress, setProgress] = useState(0)
   const [isExpanded, setIsExpanded] = useState(false)
   const [currentIndex, setCurrentIndex] = useState(0)
+  // Monotonic counter incremented on every play/pause click. A late-resolving
+  // `audio.play().then(...)` from a previous track would otherwise set
+  // isPlaying(true) on the new track, and a late `.catch()` would surface a
+  // misleading "播放失败" toast for a track the user never tried to play.
+  // The audio element is shared across track switches (its `src` changes),
+  // so we can't rely on element identity the way MobilePlayerPage can.
+  const playbackIdRef = useRef(0)
 
-  // Get current audio from playlist or current audioUrl
-  const fallbackTrack = audioUrl ? { url: audioUrl, hex: null, duration: null, createdAt: 0 } : null
+  // Get current audio from playlist or current audioUrl.
+  // The synthetic fallback has a fixed id that can't collide with a real UUID.
+  // `fromPersistedState: false` matches in-session shape so the type
+  // matches the playlist item shape; the field has no meaning for a
+  // transient fallback (it never goes through the persistence path).
+  const fallbackTrack = audioUrl ? { id: '__fallback__', url: audioUrl, hex: null, duration: null, createdAt: 0, fromPersistedState: false } : null
   const currentTrack = musicPlaylist[currentIndex] || fallbackTrack
 
   // Sync expanded state with audioResultPanelOpen
@@ -24,19 +48,28 @@ export function AudioResultPanel() {
     }
   }, [audioResultPanelOpen, setLyricsPanelShow])
 
-  // Filter out invalid tracks on mount (hex tracks become invalid after page refresh)
+  // Filter out invalid tracks on mount (hex tracks become invalid after page refresh).
+  // We read store actions through getState() so the effect doesn't need to depend on
+  // musicPlaylist/removeFromMusicPlaylist — those are stable store refs,
+  // and re-running on every playlist change would be wrong (we only want this on mount).
+  //
+  // Only items flagged `fromPersistedState: true` are scrubbed: those are the ones
+  // rehydrated from localStorage (whose blob URLs are dead). In-session items have
+  // `fromPersistedState: false` and their blob URLs are still live, so we leave
+  // them alone — even if this component re-mounts (e.g. when the user resizes
+  // between mobile and desktop layouts).
   useEffect(() => {
-    const hasInvalidTracks = musicPlaylist.some(track => track.hex === null && track.url.startsWith('blob:'))
-    if (hasInvalidTracks) {
-      // Remove tracks that were hex-encoded (they have null hex and blob: URL which is invalid after refresh)
-      musicPlaylist.forEach(track => {
-        if (track.hex === null && track.url.startsWith('blob:')) {
-          cleanupBlobUrl(track.url)
-          removeFromMusicPlaylist(track.createdAt)
-        }
-      })
-    }
-  }, [cleanupBlobUrl, musicPlaylist, removeFromMusicPlaylist])
+    const { musicPlaylist: playlist, removeFromMusicPlaylist } = useAppStore.getState()
+    const invalidTracks = playlist.filter(track =>
+      track.fromPersistedState === true && track.url.startsWith('blob:')
+    )
+    // removeFromMusicPlaylist already revokes the blob URL, so no separate
+    // cleanup call is needed. (The prior `cleanupBlobUrl` step was a
+    // double-revoke that obscured the ownership story.)
+    invalidTracks.forEach(track => {
+      removeFromMusicPlaylist(track.id)
+    })
+  }, [])
 
   const audioId = 'floating-audio'
 
@@ -45,11 +78,22 @@ export function AudioResultPanel() {
     if (!audio) return
     if (isPlaying) {
       audio.pause()
-    } else {
-      audio.play().catch(console.error)
+      setIsPlaying(false)
+      return
     }
-    setIsPlaying(!isPlaying)
-  }, [isPlaying])
+    const playbackId = ++playbackIdRef.current
+    audio.play().then(() => {
+      if (playbackIdRef.current !== playbackId) return
+      setIsPlaying(true)
+    }).catch((err: unknown) => {
+      if (playbackIdRef.current !== playbackId) return
+      // Most often this is the browser's autoplay policy or a missing
+      // source. Surface a toast so the user knows why nothing happened.
+      setIsPlaying(false)
+      const message = err instanceof Error ? err.message : '请稍后重试'
+      showToast(`播放失败:${message}`, 'error')
+    })
+  }, [isPlaying, showToast])
 
   const handleProgressClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const audio = document.getElementById(audioId) as HTMLAudioElement
@@ -60,17 +104,24 @@ export function AudioResultPanel() {
   }, [])
 
   const handleSelectTrack = useCallback((index: number) => {
+    if (index === currentIndex) return
+    const audio = document.getElementById(audioId) as HTMLAudioElement | null
+    if (audio) {
+      audio.pause()
+      audio.currentTime = 0
+    }
     setCurrentIndex(index)
     setIsPlaying(false)
     setProgress(0)
-  }, [])
+  }, [currentIndex])
 
-  const handleDeleteTrack = useCallback((e: React.MouseEvent, createdAt: number) => {
+  const handleDeleteTrack = useCallback((e: React.MouseEvent, id: string) => {
     e.stopPropagation()
-    const trackToDelete = musicPlaylist.find((track) => track.createdAt === createdAt)
-    const indexToDelete = musicPlaylist.findIndex((track) => track.createdAt === createdAt)
-    cleanupBlobUrl(trackToDelete?.url || null)
-    removeFromMusicPlaylist(createdAt)
+    const indexToDelete = musicPlaylist.findIndex((track) => track.id === id)
+    // removeFromMusicPlaylist already revokes the blob URL, so we don't
+    // double-revoke here. (`URL.revokeObjectURL` is idempotent, but the
+    // extra call obscures the ownership story.)
+    removeFromMusicPlaylist(id)
     // If we deleted the current track, adjust currentIndex
     if (indexToDelete === currentIndex) {
       setIsPlaying(false)
@@ -81,7 +132,7 @@ export function AudioResultPanel() {
     } else if (indexToDelete < currentIndex) {
       setCurrentIndex(currentIndex - 1)
     }
-  }, [cleanupBlobUrl, currentIndex, musicPlaylist, removeFromMusicPlaylist])
+  }, [currentIndex, musicPlaylist, removeFromMusicPlaylist])
 
   const handleClose = useCallback(() => {
     setIsExpanded(false)
@@ -92,6 +143,7 @@ export function AudioResultPanel() {
   useEffect(() => {
     if (currentIndex >= musicPlaylist.length && musicPlaylist.length > 0) {
       setCurrentIndex(musicPlaylist.length - 1)
+      setProgress(0)
     }
     if (musicPlaylist.length === 0) {
       setCurrentIndex(0)
@@ -108,21 +160,14 @@ export function AudioResultPanel() {
     setLyricsPanelShow(!lyricsPanelShow)
   }, [lyricsPanelShow, setLyricsPanelShow])
 
-  const handleDownload = useCallback(async () => {
+  const handleDownload = useCallback(() => {
     if (!currentTrack) return
-    try {
-      const response = await fetch(currentTrack.url)
-      const blob = await response.blob()
-      const downloadUrl = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = downloadUrl
-      a.download = `music-${Date.now()}.mp3`
-      a.click()
-      URL.revokeObjectURL(downloadUrl)
-    } catch (err) {
+    void downloadAudioBlob(currentTrack.url, 'music', (err) => {
+      // window.open(blob:...) opens a blank tab and isn't useful — fall
+      // back to the original URL (works for both http(s) and blob URLs).
       console.error('Download failed:', err)
       window.open(currentTrack.url, '_blank')
-    }
+    })
   }, [currentTrack])
 
   // Format duration from milliseconds to mm:ss
@@ -342,7 +387,7 @@ export function AudioResultPanel() {
               <div className="flex flex-col gap-1">
                 {musicPlaylist.map((track, index) => (
                   <div
-                    key={track.createdAt}
+                    key={track.id}
                     className="flex items-center gap-2 p-2 rounded-lg transition-all duration-200 group"
                     style={{
                       backgroundColor: index === currentIndex ? `${colors.accent}20` : 'transparent',
@@ -372,7 +417,7 @@ export function AudioResultPanel() {
                       <Play className="w-4 h-4 flex-shrink-0" style={{ color: colors.accent }} />
                     )}
                     <button
-                      onClick={(e) => handleDeleteTrack(e, track.createdAt)}
+                      onClick={(e) => handleDeleteTrack(e, track.id)}
                       className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex-shrink-0 p-1 rounded hover:bg-red-100"
                       style={{ color: '#ef4444' }}
                     >

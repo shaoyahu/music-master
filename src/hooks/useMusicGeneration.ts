@@ -1,103 +1,63 @@
-import { useState, useCallback } from 'react';
-import { generateMusic, getApiErrorMessage, MusicGenerationParams, MusicGenerationResponse } from '../lib/api';
+import { useCallback } from 'react';
+import { generateMusic, MusicGenerationParams } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
+import { useAsyncAction } from './useAsyncAction';
+import { parseAudioResponse, ParsedAudio } from '../lib/audio';
 
 export interface UseMusicGenerationReturn {
-  generate: (params: MusicGenerationParams) => Promise<string | null>;
+  generate: (params: MusicGenerationParams) => Promise<string | null | undefined>;
   isLoading: boolean;
   error: string | null;
 }
 
-function hexToAudioUrl(hex: string): string {
-  const binaryString = hex
-    .replace(/\s/g, '')
-    .match(/.{1,2}/g)
-    ?.map((byte) => String.fromCharCode(parseInt(byte, 16)))
-    .join('') || '';
-  
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  
-  const blob = new Blob([bytes], { type: 'audio/mpeg' });
-  return URL.createObjectURL(blob);
+interface MusicGenPending {
+  parsed: ParsedAudio
+  lyrics: string | null
 }
 
 export function useMusicGeneration(): UseMusicGenerationReturn {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
   const apiKey = useAppStore((state) => state.apiKey);
-  const setAudioResult = useAppStore((state) => state.setAudioResult);
-  const clearAudioResult = useAppStore((state) => state.clearAudioResult);
 
-  const generate = useCallback(async (params: MusicGenerationParams): Promise<string | null> => {
-    setIsLoading(true);
-    setError(null);
-    
-    // Clear previous audio result
-    clearAudioResult();
-    
-    try {
-      const response: MusicGenerationResponse = await generateMusic(apiKey, params);
-
-      // Check API-level error
+  // The action only validates the API response and parses the audio
+  // payload — it does NOT touch the store. The store mutation lives in
+  // `commit` below, which `useAsyncAction` invokes only after the
+  // runIdRef guard passes. That means a slow stale action can never
+  // clobber a newer run's `setAudioResult` / `addToMusicPlaylist` calls.
+  const action = useCallback(
+    async (params: MusicGenerationParams): Promise<MusicGenPending> => {
+      // Clear previous audio result before kicking off the request.
+      useAppStore.getState().clearAudioResult()
+      const response = await generateMusic(apiKey, params)
       if (response.base_resp && response.base_resp.status_code !== 0) {
         throw new Error(response.base_resp.status_msg || 'Music generation failed');
       }
+      const parsed = parseAudioResponse(response)
+      return { parsed, lyrics: params.lyrics || null }
+    },
+    [apiKey]
+  )
 
-      if (!response.data) {
-        throw new Error('接口返回数据格式异常，请检查网络或联系开发者');
-      }
+  // Race-safe commit: useAsyncAction calls this only when this run is
+  // still the latest (runIdRef matches), so a late-resolving older
+  // request cannot overwrite the newer one.
+  const commit = useCallback((pending: MusicGenPending) => {
+    const { setAudioResult, addToMusicPlaylist, setAudioResultPanelOpen } = useAppStore.getState()
+    setAudioResult(pending.parsed.url, pending.parsed.hex, pending.parsed.duration)
+    addToMusicPlaylist(pending.parsed.url, pending.parsed.hex, pending.parsed.duration, pending.lyrics)
+    setAudioResultPanelOpen(true)
+  }, [])
 
-      const audioData = response.data;
+  const { run, isLoading, error } = useAsyncAction<[MusicGenerationParams], MusicGenPending>(action, { onSuccess: commit })
 
-      // Check if generation is complete (status 2 = complete, 1 = processing)
-      if (audioData.status === 1) {
-        throw new Error('音乐仍在生成中，请稍后重试');
-      }
-
-      let audioUrl: string | null = null;
-      let audioHex: string | null = null;
-
-      // Handle audio data - check if it's a URL or hex data
-      if (audioData.audio) {
-        if (audioData.audio.startsWith('http://') || audioData.audio.startsWith('https://')) {
-          // It's already a URL, use directly
-          audioUrl = audioData.audio;
-        } else {
-          // It's hex data, convert to audio URL
-          audioHex = audioData.audio;
-          audioUrl = hexToAudioUrl(audioData.audio);
-        }
-      }
-      // Handle url format - use directly
-      else if (audioData.audio_url) {
-        audioUrl = audioData.audio_url;
-      } else {
-        throw new Error('未获取到音频数据，请重试');
-      }
-
-      setAudioResult(
-        audioUrl,
-        audioHex,
-        response.extra_info?.music_duration || null
-      );
-
-      // Add to playlist and auto open the audio result panel when music is generated
-      useAppStore.getState().addToMusicPlaylist(audioUrl, audioHex, response.extra_info?.music_duration || null, params.lyrics || null);
-      useAppStore.getState().setAudioResultPanelOpen(true);
-
-      return audioUrl;
-    } catch (err) {
-      const errorMessage = getApiErrorMessage(err, 'Music generation failed');
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiKey, setAudioResult, clearAudioResult]);
+  // Preserve the public return shape: callers expect a URL, not the
+  // internal pending object.
+  const generate = useCallback(
+    async (params: MusicGenerationParams): Promise<string | null | undefined> => {
+      const pending = await run(params)
+      return pending?.parsed.url
+    },
+    [run]
+  )
 
   return {
     generate,

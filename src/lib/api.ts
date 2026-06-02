@@ -66,10 +66,15 @@ export interface CoverPreprocessResponse {
   };
 }
 
-export interface ApiError {
+export class ApiError extends Error {
   status: number;
-  status_text: string;
   trace_id?: string;
+  constructor(status: number, status_text: string, trace_id?: string) {
+    super(status_text);
+    this.name = 'ApiError';
+    this.status = status;
+    this.trace_id = trace_id;
+  }
 }
 
 export function getApiErrorMessage(error: unknown, fallback: string): string {
@@ -131,32 +136,31 @@ async function parseResponse<T>(response: Response): Promise<T> {
       data = JSON.parse(text);
     } catch {
       if (!response.ok) {
-        throw {
-          status: response.status,
-          status_text: text || response.statusText,
-        } as ApiError;
+        throw new ApiError(
+          response.status,
+          text || response.statusText || 'Request failed'
+        );
       }
 
-      throw {
-        status: response.status,
-        status_text: 'Invalid JSON response from API',
-      } as ApiError;
+      throw new ApiError(
+        response.status,
+        'Invalid JSON response from API'
+      );
     }
   }
 
   if (!response.ok) {
     const errorBody = readErrorBody(data);
-    throw {
-      status: response.status,
-      status_text:
-        errorBody.status_text ||
+    throw new ApiError(
+      response.status,
+      errorBody.status_text ||
         errorBody.status_msg ||
         errorBody.base_resp?.status_msg ||
         errorBody.message ||
         response.statusText ||
         'Request failed',
-      trace_id: errorBody.trace_id,
-    } as ApiError;
+      errorBody.trace_id
+    );
   }
 
   return data as T;
@@ -177,7 +181,7 @@ async function fetchWithTimeout(
     });
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      throw { status: 408, status_text: 'Request timeout - please try again' } as ApiError;
+      throw new ApiError(408, 'Request timeout - please try again');
     }
     throw error;
   } finally {
@@ -190,7 +194,7 @@ export async function generateMusic(
   params: MusicGenerationParams
 ): Promise<MusicGenerationResponse> {
   if (!apiKey) {
-    throw { status: 400, status_text: 'API key is required' } as ApiError;
+    throw new ApiError(400, 'API key is required');
   }
 
   const response = await fetchWithTimeout(`${API_BASE}/v1/music_generation`, {
@@ -213,12 +217,12 @@ export async function generateLyrics(
   title?: string
 ): Promise<LyricsGenerationResponse> {
   if (!apiKey) {
-    throw { status: 400, status_text: 'API key is required' } as ApiError;
+    throw new ApiError(400, 'API key is required');
   }
 
   // Validate edit mode has lyrics
   if (mode === 'edit' && !lyrics?.trim()) {
-    throw { status: 400, status_text: 'Lyrics content is required for edit mode' } as ApiError;
+    throw new ApiError(400, 'Lyrics content is required for edit mode');
   }
 
   const response = await fetchWithTimeout(`${API_BASE}/v1/lyrics_generation`, {
@@ -244,11 +248,11 @@ export async function coverPreprocess(
   audioBase64?: string
 ): Promise<CoverPreprocessResponse> {
   if (!apiKey) {
-    throw { status: 400, status_text: 'API key is required' } as ApiError;
+    throw new ApiError(400, 'API key is required');
   }
 
   if (!audioUrl && !audioBase64) {
-    throw { status: 400, status_text: 'Either audioUrl or audioBase64 is required' } as ApiError;
+    throw new ApiError(400, 'Either audioUrl or audioBase64 is required');
   }
 
   const response = await fetchWithTimeout(`${API_BASE}/v1/music_cover_preprocess`, {

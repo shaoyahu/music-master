@@ -26,28 +26,39 @@ export function CoverProcessor() {
   const [localCoverLyrics, setLocalCoverLyrics] = useState(coverLyrics || '')
   const [fileError, setFileError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  // Track which audio source the local lyrics came from so we only re-sync
+  // when a NEW preprocess completes (not on every store change from local edits).
+  const lastSyncedFeatureRef = useRef<string | null>(null)
 
-  // Sync local lyrics when store coverLyrics updates (after preprocess)
+  // Only sync local lyrics when coverLyrics changes for a *new* feature (i.e., after preprocess).
+  // This avoids stomping on the user's in-progress edits in the textarea.
   useEffect(() => {
-    if (coverLyrics) {
+    if (coverLyrics && coverFeatureId && lastSyncedFeatureRef.current !== coverFeatureId) {
+      lastSyncedFeatureRef.current = coverFeatureId
       setLocalCoverLyrics(coverLyrics)
     }
-  }, [coverLyrics])
+  }, [coverLyrics, coverFeatureId])
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
-      if (file) {
-        setFileError(null)
+      if (!file) return
+      // Reset the input so re-selecting the same file re-fires onChange.
+      e.target.value = ''
+      setFileError(null)
+      try {
+        const { base64 } = await fileToBase64WithNCMSupport(file)
         try {
-          const result = await fileToBase64WithNCMSupport(file)
-          const { base64 } = result
-
           await preprocess(undefined, base64)
-        } catch (err) {
-          const errorMessage = err instanceof Error ? err.message : '文件处理失败'
-          setFileError(errorMessage)
+        } catch {
+          // API errors are surfaced via coverError by the hook; the inner
+          // empty catch prevents the outer catch from re-displaying the
+          // same error in fileError.
         }
+      } catch (err) {
+        // File conversion / NCM decode errors don't go through the hook,
+        // so they're the only path that writes to fileError.
+        setFileError(err instanceof Error ? err.message : '文件处理失败')
       }
     },
     [preprocess]

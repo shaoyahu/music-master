@@ -1,8 +1,15 @@
-import { useState, useCallback } from 'react';
-import { generateLyrics, getApiErrorMessage, LyricsGenerationResponse } from '../lib/api';
+import { useCallback } from 'react';
+import { generateLyrics, LyricsGenerationResponse } from '../lib/api';
 import { useAppStore } from '../stores/appStore';
+import { useAsyncAction } from './useAsyncAction';
 
 export type LyricsMode = 'write_full_song' | 'edit';
+
+interface LyricsGenResult {
+  text: string | null
+  title: string | null
+  styleTags: string | null
+}
 
 export interface UseLyricsGenerationReturn {
   generate: (
@@ -10,61 +17,72 @@ export interface UseLyricsGenerationReturn {
     prompt?: string,
     lyrics?: string,
     title?: string
-  ) => Promise<string | null>;
+  ) => Promise<string | null | undefined>;
   isLoading: boolean;
   error: string | null;
 }
 
 export function useLyricsGeneration(): UseLyricsGenerationReturn {
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  
   const apiKey = useAppStore((state) => state.apiKey);
-  const setGeneratedLyrics = useAppStore((state) => state.setGeneratedLyrics);
-  const setGeneratedLyricsTitle = useAppStore((state) => state.setGeneratedLyricsTitle);
-  const setGeneratedLyricsStyleTags = useAppStore((state) => state.setGeneratedLyricsStyleTags);
-  const setLyricsPanelOpen = useAppStore((state) => state.setLyricsPanelOpen);
 
-  const generate = useCallback(async (
-    mode: LyricsMode,
-    prompt?: string,
-    lyrics?: string,
-    title?: string
-  ): Promise<string | null> => {
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      const response: LyricsGenerationResponse = await generateLyrics(
-        apiKey,
-        mode,
-        prompt,
-        lyrics,
-        title
-      );
-      
+  // The action only validates the API response. Store mutations live in
+  // `commit` (called by useAsyncAction only after the runIdRef guard passes)
+  // so a slow stale request cannot clobber a newer one's lyrics panel state.
+  const action = useCallback(
+    async (
+      mode: LyricsMode,
+      prompt?: string,
+      lyrics?: string,
+      title?: string
+    ): Promise<LyricsGenResult> => {
+      const response: LyricsGenerationResponse = await generateLyrics(apiKey, mode, prompt, lyrics, title);
+
       if (response.base_resp && response.base_resp.status_code !== 0) {
         throw new Error(response.base_resp.status_msg || 'Lyrics generation failed');
       }
 
-      const generatedLyricsText = response.lyrics || null;
+      return {
+        text: response.lyrics || null,
+        title: response.song_title || null,
+        styleTags: response.style_tags || null,
+      };
+    },
+    [apiKey]
+  );
 
-      if (generatedLyricsText) {
-        setGeneratedLyrics(generatedLyricsText);
-        setGeneratedLyricsTitle(response.song_title || null);
-        setGeneratedLyricsStyleTags(response.style_tags || null);
-        setLyricsPanelOpen(true);
-      }
-      
-      return generatedLyricsText;
-    } catch (err) {
-      const errorMessage = getApiErrorMessage(err, 'Lyrics generation failed');
-      setError(errorMessage);
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [apiKey, setGeneratedLyrics, setGeneratedLyricsTitle, setGeneratedLyricsStyleTags, setLyricsPanelOpen]);
+  const commit = useCallback((pending: LyricsGenResult) => {
+    if (!pending.text) return;
+    const {
+      setGeneratedLyrics,
+      setGeneratedLyricsTitle,
+      setGeneratedLyricsStyleTags,
+      setLyricsPanelOpen,
+    } = useAppStore.getState();
+    setGeneratedLyrics(pending.text);
+    setGeneratedLyricsTitle(pending.title);
+    setGeneratedLyricsStyleTags(pending.styleTags);
+    setLyricsPanelOpen(true);
+  }, []);
+
+  const { run, isLoading, error } = useAsyncAction<[LyricsMode, string?, string?, string?], LyricsGenResult>(
+    action,
+    { onSuccess: commit }
+  );
+
+  // Preserve the public return shape: callers expect the lyrics text
+  // (or undefined on stale), not the internal result object.
+  const generate = useCallback(
+    async (
+      mode: LyricsMode,
+      prompt?: string,
+      lyrics?: string,
+      title?: string
+    ): Promise<string | null | undefined> => {
+      const result = await run(mode, prompt, lyrics, title);
+      return result?.text;
+    },
+    [run]
+  );
 
   return {
     generate,

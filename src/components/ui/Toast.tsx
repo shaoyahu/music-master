@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
+import type { ToastType } from '@/stores/appStore'
 
 interface ToastProps {
   message: string
-  type?: 'error' | 'success' | 'info'
+  type?: ToastType
   duration?: number
   onClose: () => void
 }
@@ -11,21 +12,52 @@ interface ToastProps {
 export function Toast({ message, type = 'error', duration = 3000, onClose }: ToastProps) {
   const [isVisible, setIsVisible] = useState(false)
   const [isLeaving, setIsLeaving] = useState(false)
+  // Stabilize onClose across re-renders so the dismiss timer isn't reset on parent updates
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
+  // Tracks the inner "leave animation → onClose" timer. Without this, a
+  // leave started by an old toast instance could fire `onClose` (which is
+  // a global hideToast) and dismiss a newer toast that replaced it during
+  // the 300ms leave window.
+  const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const clearLeaveTimer = () => {
+    if (leaveTimerRef.current !== null) {
+      clearTimeout(leaveTimerRef.current)
+      leaveTimerRef.current = null
+    }
+  }
+
+  // Entry animation runs once on mount only. Re-running on `duration`
+  // change would briefly re-trigger the slide-in transition even though
+  // the toast is already on screen.
   useEffect(() => {
     requestAnimationFrame(() => setIsVisible(true))
+  }, [])
 
+  useEffect(() => {
     const timer = setTimeout(() => {
       setIsLeaving(true)
-      setTimeout(onClose, 300)
+      clearLeaveTimer()
+      leaveTimerRef.current = setTimeout(() => {
+        onCloseRef.current()
+        leaveTimerRef.current = null
+      }, 300)
     }, duration)
 
-    return () => clearTimeout(timer)
-  }, [duration, onClose])
+    return () => {
+      clearTimeout(timer)
+      clearLeaveTimer()
+    }
+  }, [duration])
 
   const handleClose = () => {
     setIsLeaving(true)
-    setTimeout(onClose, 300)
+    clearLeaveTimer()
+    leaveTimerRef.current = setTimeout(() => {
+      onCloseRef.current()
+      leaveTimerRef.current = null
+    }, 300)
   }
 
   const bgColor = type === 'error' ? 'rgba(239,68,68,0.95)' : type === 'success' ? 'rgba(34,197,94,0.95)' : 'rgba(59,130,246,0.95)'
@@ -51,16 +83,4 @@ export function Toast({ message, type = 'error', duration = 3000, onClose }: Toa
       </div>
     </div>
   )
-}
-
-export function useToast() {
-  const [toast, setToast] = useState<{ message: string; type?: 'error' | 'success' | 'info' } | null>(null)
-
-  const showToast = (message: string, type: 'error' | 'success' | 'info' = 'error') => {
-    setToast({ message, type })
-  }
-
-  const hideToast = () => setToast(null)
-
-  return { toast, showToast, hideToast }
 }

@@ -9,9 +9,8 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { X, Key, Eye, EyeOff } from 'lucide-react'
 import { MobileTabBar } from '@/components/layout/MobileTabBar'
 import { MobilePlayerPage } from '@/components/layout/MobilePlayerPage'
-import { MobileLyricsDrawer } from '@/components/layout/MobileLyricsDrawer'
 import { MePage } from '@/components/layout/MePage'
-import { Toast, useToast } from '@/components/ui/Toast'
+import { Toast } from '@/components/ui/Toast'
 import { useResponsive } from '@/hooks/useResponsive'
 
 function App() {
@@ -22,6 +21,7 @@ function App() {
   const setActiveTab = useAppStore((state) => state.setMode)
   const isDark = useAppStore((state) => state.isDark)
   const setIsDark = useAppStore((state) => state.setIsDark)
+  const setStyle = useAppStore((state) => state.setStyle)
   const lyricsPanelOpen = useAppStore((state) => state.lyricsPanelOpen)
   const setLyricsPanelOpen = useAppStore((state) => state.setLyricsPanelOpen)
   const lyricsExampleOpen = useAppStore((state) => state.lyricsExampleOpen)
@@ -30,9 +30,10 @@ function App() {
   const setApiKey = useAppStore((state) => state.setApiKey)
   const [tempApiKey, setTempApiKey] = useState(apiKey)
   const { isMobile } = useResponsive()
-  const [mobileTab, setMobileTab] = useState<'music' | 'cover' | 'player' | 'lyrics' | 'me'>('music')
-  const [lyricsDrawerOpen, setLyricsDrawerOpen] = useState(false)
-  const { toast, hideToast } = useToast()
+  const mobileTab = useAppStore((state) => state.mobileTab)
+  const setMobileTab = useAppStore((state) => state.setMobileTab)
+  const toast = useAppStore((state) => state.toast)
+  const hideToast = useAppStore((state) => state.hideToast)
 
   const colors = styleColors[style]
 
@@ -55,8 +56,8 @@ function App() {
       className={`min-h-screen bg-gradient-to-br ${bgGradient}`}
       style={{ color: isDark ? '#eee' : '#333' }}
     >
-      {/* Toast for mobile */}
-      {toast && <Toast message={toast.message} type={toast.type} onClose={hideToast} />}
+      {/* Toast — keyed by id so each new message re-mounts and resets its dismiss timer */}
+      {toast && <Toast key={toast.id} message={toast.message} type={toast.type} onClose={hideToast} />}
 
       {isMobile ? (
         /* MOBILE LAYOUT */
@@ -72,17 +73,6 @@ function App() {
             )}
             {mobileTab === 'me' && <MePage onApiKeyDialogOpen={() => setApiKeyDialogOpen(true)} />}
           </main>
-
-          <MobileLyricsDrawer
-            isOpen={lyricsDrawerOpen}
-            onClose={() => setLyricsDrawerOpen(false)}
-            colors={colors}
-            isDark={isDark}
-          >
-            <div className="text-center py-8" style={{ color: isDark ? '#888' : '#999' }}>
-              歌词功能
-            </div>
-          </MobileLyricsDrawer>
 
           <MobileTabBar
             activeTab={mobileTab}
@@ -106,7 +96,7 @@ function App() {
             <div className="h-full flex items-center justify-between px-4">
               <div className="flex items-center gap-3">
                 <span className="text-2xl">🎵</span>
-                <h1 className="text-xl font-bold">音乐生成器</h1>
+                <h1 className="text-xl font-bold">Music Master</h1>
               </div>
 
               <div className="flex items-center gap-2">
@@ -150,7 +140,7 @@ function App() {
                 >
                   {isDark ? '☀️' : '🌙'}
                 </button>
-                <StyleSelector value={style} onChange={useAppStore.getState().setStyle} isDark={isDark} borderColor={borderColor} labelColor={labelColor} />
+                <StyleSelector value={style} onChange={setStyle} isDark={isDark} borderColor={borderColor} labelColor={labelColor} />
               </div>
             </div>
           </header>
@@ -192,7 +182,7 @@ function App() {
                 </div>
 
                 <Dialog.Description style={{ color: isDark ? '#888' : '#666', fontSize: '14px', marginBottom: '16px' }}>
-                  请输入您的 MiniMax API Key 以启用音乐生成功能。密钥将安全保存在本地浏览器中。
+                  请输入您的 MiniMax API Key 以启用音乐生成功能。出于安全考虑,密钥仅保存在当前会话内存中,刷新页面后需重新输入。
                 </Dialog.Description>
 
                 <div style={{ marginBottom: '16px' }}>
@@ -403,6 +393,24 @@ function App() {
             className="fixed top-14 left-20 right-0 bottom-0 overflow-auto"
             style={{ padding: '24px' }}
           >
+            {(() => {
+              // 0 panels → main alone takes 2/3 of body width, centered.
+              // 1 panel  → main + that one open panel fill the entire body at a 2:1 ratio.
+              // 2 panels → all three share space equally (1:1:1).
+              // We use flex-grow (instead of fixed basis) when panels are open
+              // so the 24px gap is automatically subtracted from available space.
+              //
+              // Each side panel's flex must depend on whether *that* panel is
+              // open — otherwise the closed panel (opacity:0) still occupies
+              // its share of the flex row, leaving a big empty slot in the
+              // middle. The main flex still uses the total count because
+              // it's a single child.
+              const openPanels = [lyricsPanelOpen, lyricsExampleOpen].filter(Boolean).length
+              const mainFlex =
+                openPanels === 0 ? '0 0 66.6667%' : openPanels === 1 ? '2 1 0' : '1 1 0'
+              const lyricsPanelFlex = lyricsPanelOpen ? '1 1 0' : '0'
+              const lyricsExampleFlex = lyricsExampleOpen ? '1 1 0' : '0'
+              return (
             <div
               className="h-full"
               style={{
@@ -415,11 +423,11 @@ function App() {
                 justifyContent: (lyricsPanelOpen || lyricsExampleOpen) ? 'flex-start' : 'center',
               }}
             >
-              {/* Music card - spans 2 cols when alone, 1 when panels open */}
+              {/* Music card */}
               <div
                 style={{
                   height: '100%',
-                  flex: `0 0 ${(lyricsPanelOpen && lyricsExampleOpen) ? '33.3333%' : '66.6667%'}`,
+                  flex: mainFlex,
                   minWidth: 0,
                   transition: 'flex-basis 0.3s ease-in-out',
                 }}
@@ -432,7 +440,7 @@ function App() {
               <div
                 style={{
                   height: '100%',
-                  flex: lyricsPanelOpen ? '1' : '0',
+                  flex: lyricsPanelFlex,
                   minWidth: 0,
                   opacity: lyricsPanelOpen ? 1 : 0,
                   pointerEvents: lyricsPanelOpen ? 'auto' : 'none',
@@ -446,7 +454,7 @@ function App() {
               <div
                 style={{
                   height: '100%',
-                  flex: lyricsExampleOpen ? '1' : '0',
+                  flex: lyricsExampleFlex,
                   minWidth: 0,
                   opacity: lyricsExampleOpen ? 1 : 0,
                   pointerEvents: lyricsExampleOpen ? 'auto' : 'none',
@@ -456,6 +464,8 @@ function App() {
                 {lyricsExampleOpen && <LyricsExample />}
               </div>
             </div>
+              )
+            })()}
           </main>
 
           {/* Floating Audio Player - always rendered */}

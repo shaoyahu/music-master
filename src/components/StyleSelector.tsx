@@ -6,8 +6,11 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import type { Style } from '@/stores/appStore'
 
-export type Style = 'warm' | 'nature' | 'cyberpunk' | 'blue' | 'cartoon' | 'minimal' | 'retro' | 'dark' | 'pink' | 'animal'
+// Re-export so existing imports of `Style` from StyleSelector keep working,
+// while the canonical type now lives in the store.
+export type { Style } from '@/stores/appStore'
 
 interface StyleSelectorProps {
   value: Style
