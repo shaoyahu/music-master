@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --mm-radius: 0.5rem;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  background: var(--mm-bg);
+  color: var(--mm-fg);
+}
+
+button {
+  cursor: pointer;
+  font: inherit;
+}
+
+*:focus-visible {
+  outline: none;
+}
+
+/* 防止移动端底部 Tab Bar 遮挡内容 */
+@supports (padding: max(0px)) {
+  body {
+    padding-bottom: max(env(safe-area-inset-bottom), 0);
+  }
+}
+
+/* 滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: var(--mm-bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--mm-border);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--mm-fg-muted);
+}
